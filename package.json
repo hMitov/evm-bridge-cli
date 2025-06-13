@@ -1,0 +1,30 @@
+{
+  "name": "evm-bridge-cli",
+  "version": "1.0.0",
+  "description": "CLI tool for bridging tokens between EVM-compatible chains",
+  "main": "dist/index.js",
+  "bin": {
+    "bridge": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "ts-node src/index.ts",
+    "dev": "ts-node-dev --respawn src/index.ts",
+    "prepare": "npm run build"
+  },
+  "keywords": ["ethereum", "bridge", "cli", "evm", "tokens"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "commander": "^11.1.0",
+    "dotenv": "^16.4.5",
+    "ethers": "^6.11.1",
+    "inquirer": "^9.2.15"
+  },
+  "devDependencies": {
+    "@types/inquirer": "^9.0.7",
+    "@types/node": "^20.11.24",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}
