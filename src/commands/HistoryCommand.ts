@@ -1,7 +1,6 @@
-import { Command } from 'commander';
 import { ethers, EventLog } from 'ethers';
-import { BridgeConfig } from '../types';
-import { BRIDGE_FACTORY_ABI } from '../types/abi';
+import * as bridgeFactoryAbi from '../contracts/abis/BridgeFactory.json';
+import { cliConfigManager } from '../config/cliConfig';
 
 interface TokenLockedEvent {
   token: string;
@@ -37,15 +36,16 @@ interface BridgeTransaction {
 export class HistoryCommand {
   public async execute(): Promise<void> {
     try {
-      const config = await this.loadConfig();
+      const currentNetwork = cliConfigManager.getCliConfig().currentNetwork;
+      const provider = new ethers.WebSocketProvider(currentNetwork.wsUrl);
       const bridgeFactory = new ethers.Contract(
-        config.currentNetwork.bridgeFactoryAddress,
-        BRIDGE_FACTORY_ABI,
-        config.provider
+        currentNetwork.bridgeFactoryAddress,
+        bridgeFactoryAbi.abi,
+        provider
       );
 
       // Query events from the last 10,000 blocks
-      const currentBlock = await config.provider.getBlockNumber();
+      const currentBlock = await provider.getBlockNumber();
       const fromBlock = Math.max(0, currentBlock - 10000);
 
       const [lockEvents, claimEvents, returnEvents] = await Promise.all([
@@ -125,10 +125,5 @@ export class HistoryCommand {
       console.error('Error:', error instanceof Error ? error.message : 'Unknown error occurred');
       process.exit(1);
     }
-  }
-
-  private async loadConfig(): Promise<BridgeConfig> {
-    // TODO: Implement config loading
-    throw new Error('Not implemented');
   }
 } 

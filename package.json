@@ -12,14 +12,23 @@
     "dev": "ts-node-dev --respawn src/index.ts",
     "prepare": "npm run build"
   },
-  "keywords": ["ethereum", "bridge", "cli", "evm", "tokens"],
+  "keywords": [
+    "ethereum",
+    "bridge",
+    "cli",
+    "evm",
+    "tokens"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@types/joi": "^17.2.2",
+    "async-mutex": "^0.5.0",
     "commander": "^11.1.0",
     "dotenv": "^16.4.5",
     "ethers": "^6.11.1",
-    "inquirer": "^9.2.15"
+    "inquirer": "^9.2.15",
+    "joi": "^17.13.3"
   },
   "devDependencies": {
     "@types/inquirer": "^9.0.7",

@@ -1,0 +1,25 @@
+[
+  [
+    "0xf8F0F5c8C3FdC3213C7bf6E4140257F8F09d22A9",
+    [
+      {
+        "user": "0xf8F0F5c8C3FdC3213C7bf6E4140257F8F09d22A9",
+        "token": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "amount": "3000",
+        "sourceChainId": "84532",
+        "nonce": "1750082892307",
+        "signature": "0x7c95913cf62663b93d3f8b9c66c726e863635069423c9707202dc7c37dbd73cd212354b338c634583512066410b5b7d8c25f1a513161de0ccdb6bf081210102d1c",
+        "claimed": true
+      },
+      {
+        "user": "0xf8F0F5c8C3FdC3213C7bf6E4140257F8F09d22A9",
+        "token": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "amount": "3000",
+        "sourceChainId": "84532",
+        "nonce": "1750083188492",
+        "signature": "0x6d8bc3a84120c763ab87da8ca38959c955e5c2efd22e8da5c7ed216fb95f5f39584cf650f5bb0b17fb8d9e002b7a129fe067441f567e82e9cd65c4e6eb7735e21c",
+        "claimed": true
+      }
+    ]
+  ]
+]

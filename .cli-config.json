@@ -1,0 +1,11 @@
+{
+  "currentNetwork": {
+    "name": "Base",
+    "chainId": 84532,
+    "wsUrl": "wss://base-sepolia.infura.io/ws/v3/d3238ad56c6e4425b22d8734d680a5ed",
+    "bridgeFactoryAddress": "0xf761ff8C81d96b60eeaaf97b4C254d59e262f3D1",
+    "explorerUrl": "https://basescan.org"
+  },
+  "selectedToken": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+  "targetChainId": 11155111
+}

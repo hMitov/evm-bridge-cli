@@ -1,6 +1,8 @@
+import { cliConfigManager } from '../config/cliConfig';
 import inquirer from 'inquirer';
+import { getNetworkByChainId, getNetworkList } from '../config/networks';
 import { BaseCommand } from './BaseCommand';
-import { getNetworkList } from '../config/networks';
+import { CLIConfig } from '../types';
 
 export class SwitchNetworkCommand extends BaseCommand {
   protected async action(): Promise<void> {
@@ -11,31 +13,38 @@ export class SwitchNetworkCommand extends BaseCommand {
         type: 'list',
         name: 'chainId',
         message: 'Select network to switch to:',
-        choices: availableNetworks.map(network => ({
-          name: network.name,
-          value: network.chainId
-        }))
-      }
+        choices: availableNetworks.map(net => ({
+          name: `${net.name} (chainId: ${net.chainId})`,
+          value: net.chainId,
+        })),
+      },
     ]);
 
-    if (chainId === this.config.currentNetwork.chainId) {
-      console.log(`Already connected to ${this.config.currentNetwork.name}`);
+    const selectedNetwork = getNetworkByChainId(chainId);
+    if (!selectedNetwork) {
+      console.error(`Network with chainId ${chainId} not found.`);
       return;
     }
 
+    const currentConfig = cliConfigManager.getCliConfig();
+    if (chainId === currentConfig.currentNetwork.chainId) {
+      console.log(`Already connected to ${currentConfig.currentNetwork.name}`);
+      return;
+    }
+
+    // Update and save config
+    const updatedConfig: CLIConfig = {
+      ...currentConfig,
+      currentNetwork: selectedNetwork,
+    };
+
     try {
-      // Update environment variable
-      process.env.CURRENT_CHAIN_ID = chainId.toString();
-      
-      // Reinitialize config with new network
-      this.initializeConfig();
-      
-      console.log(`\nSuccessfully switched to ${this.config.currentNetwork.name}`);
-      console.log(`RPC URL: ${this.config.currentNetwork.rpcUrl}`);
-      console.log(`Chain ID: ${this.config.currentNetwork.chainId}`);
-    } catch (error) {
-      console.error('Error switching network:', error instanceof Error ? error.message : 'Unknown error');
-      throw error;
+      cliConfigManager.saveCliConfig(updatedConfig);
+      console.log(`\nSuccessfully switched to ${selectedNetwork.name}`);
+      console.log(`WS URL: ${selectedNetwork.wsUrl}`);
+      console.log(`Chain ID: ${selectedNetwork.chainId}`);
+    } catch (err) {
+      console.error('Failed to save config:', err);
     }
   }
-} 
+}

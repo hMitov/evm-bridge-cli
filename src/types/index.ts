@@ -3,7 +3,7 @@ import { ethers } from 'ethers';
 export interface NetworkConfig {
   name: string;
   chainId: number;
-  rpcUrl: string;
+  wsUrl: string;
   bridgeFactoryAddress: string;
   explorerUrl: string;
 }
@@ -37,9 +37,8 @@ export interface PermitData {
   s: string;
 }
 
-export interface BridgeConfig {
-  networks: Record<number, NetworkConfig>;
-  currentNetwork: NetworkConfig;
-  wallet: ethers.Wallet;
-  provider: ethers.Provider;
-} 
+export interface CLIConfig {
+  currentNetwork: NetworkConfig
+  targetChainId?: number;
+  selectedToken?: string;
+}

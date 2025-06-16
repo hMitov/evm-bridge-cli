@@ -5,6 +5,23 @@ import { returnToken } from '../utils/blockchain';
 
 export class ReturnCommand extends BaseCommand {
   protected async action(): Promise<void> {
+    const { targetChainId, nonce, signature } = await inquirer.prompt([
+      {
+        type: 'input',
+        name: 'targetChainId',
+        message: 'Enter target chain ID:',
+      },
+      {
+        type: 'input',
+        name: 'nonce',
+        message: 'Enter nonce:',
+      },
+      {
+        type: 'input',
+        name: 'signature',
+        message: 'Enter signature:',
+      },
+    ]);
     const { amount } = await inquirer.prompt([
       {
         type: 'input',
@@ -23,7 +40,7 @@ export class ReturnCommand extends BaseCommand {
       const amountWei = ethers.parseUnits(amount, 18); // Assuming 18 decimals for simplicity
       console.log('\nReturning tokens...');
       
-      const tx = await returnToken(this.config, amountWei);
+      const tx = await returnToken("", "", amountWei, Number(targetChainId), Number(nonce));
       console.log(`Transaction hash: ${tx.hash}`);
       
       const receipt = await tx.wait();

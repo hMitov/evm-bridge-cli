@@ -1,138 +1,192 @@
 import { ethers, Contract, ContractTransactionResponse } from 'ethers';
-import { BridgeConfig, TokenInfo, PermitData } from '../types';
-import { ERC20_ABI, BRIDGE_FACTORY_ABI } from '../types/abi';
+import * as bridgeFactoryAbi from '../contracts/abis/BridgeFactory.json';
+import * as werc20Abi from '../contracts/abis/WERC20.json';
+import { cliConfigManager } from '../config/cliConfig';
+import { USER_PRIVATE_KEY } from '../config/config';
+import { PermitData, TokenInfo } from '../types';
+
+
+const ERC20_ABI = [
+  "function symbol() view returns (string)",
+  "function decimals() view returns (uint8)",
+  "function balanceOf(address) view returns (uint256)",
+  "function approve(address spender, uint256 amount) returns (bool)",
+  "function nonces(address) view returns (uint256)",
+  "function name() view returns (string)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function transfer(address to, uint256 amount) returns (bool)",
+  "function transferFrom(address from, address to, uint256 amount) returns (bool)"
+];
+
+function getProviderAndWallet() {
+  const currentNetwork = cliConfigManager.getCliConfig().currentNetwork;
+  const provider = new ethers.WebSocketProvider(currentNetwork.wsUrl);
+  const wallet = new ethers.Wallet(USER_PRIVATE_KEY, provider);
+  return { provider, wallet, currentNetwork };
+}
 
 export const getTokenInfo = async (
-  config: BridgeConfig,
   tokenAddress: string
 ): Promise<TokenInfo> => {
-  const tokenContract = new Contract(tokenAddress, ERC20_ABI, config.provider);
-  
-  const [symbol, decimals, balance] = await Promise.all([
-    tokenContract.symbol(),
-    tokenContract.decimals(),
-    tokenContract.balanceOf(config.wallet.address)
-  ]);
+  const { wallet, currentNetwork } = getProviderAndWallet();
+  const tokenContract = new Contract(tokenAddress, ERC20_ABI, wallet.provider);
 
-  return {
-    address: tokenAddress,
-    symbol,
-    decimals,
-    balance: ethers.formatUnits(balance, decimals)
-  };
+  try {
+    const [symbol, decimals, balance] = await Promise.all([
+      tokenContract.symbol(),
+      tokenContract.decimals(),
+      tokenContract.balanceOf(wallet.address),
+    ]);
+
+    const allowance = await tokenContract.allowance(wallet.address, currentNetwork.bridgeFactoryAddress);
+
+    console.log('Token address:', tokenAddress);
+    console.log('Wallet address:', wallet.address);
+    console.log('Bridge address:', currentNetwork.bridgeFactoryAddress);
+    console.log('Balance:', ethers.formatUnits(balance, decimals));
+    console.log('Allowance:', ethers.formatUnits(allowance, decimals));
+    console.log('Decimals:', decimals);
+
+    return {
+      address: tokenAddress,
+      symbol,
+      decimals,
+      balance: ethers.formatUnits(balance, decimals),
+    };
+  } catch (error) {
+    throw new Error(`Failed to get token info: ${(error as Error).message}`);
+  }
 };
 
+
 export const generatePermitSignature = async (
-  config: BridgeConfig,
   tokenAddress: string,
   amount: bigint,
   deadline: bigint
 ): Promise<PermitData> => {
-  const tokenContract = new Contract(tokenAddress, ERC20_ABI, config.provider);
-  const nonce = await tokenContract.nonces(config.wallet.address);
-  
-  const domain = {
-    name: await tokenContract.name(),
-    version: '1',
-    chainId: config.currentNetwork.chainId,
-    verifyingContract: tokenAddress
-  };
+  const { wallet, currentNetwork } = getProviderAndWallet();
+  const tokenContract = new Contract(tokenAddress, ERC20_ABI, wallet.provider);
 
-  const types = {
-    Permit: [
-      { name: 'owner', type: 'address' },
-      { name: 'spender', type: 'address' },
-      { name: 'value', type: 'uint256' },
-      { name: 'nonce', type: 'uint256' },
-      { name: 'deadline', type: 'uint256' }
-    ]
-  };
+  try {
+    const nonce = await tokenContract.nonces(wallet.address);
 
-  const value = {
-    owner: config.wallet.address,
-    spender: config.currentNetwork.bridgeFactoryAddress,
-    value: amount,
-    nonce,
-    deadline
-  };
+    const domain = {
+      name: await tokenContract.name(),
+      version: '1',
+      chainId: currentNetwork.chainId,
+      verifyingContract: tokenAddress,
+    };
 
-  const signature = await config.wallet.signTypedData(domain, types, value);
-  const { v, r, s } = ethers.Signature.from(signature);
+    const types = {
+      Permit: [
+        { name: 'owner', type: 'address' },
+        { name: 'spender', type: 'address' },
+        { name: 'value', type: 'uint256' },
+        { name: 'nonce', type: 'uint256' },
+        { name: 'deadline', type: 'uint256' },
+      ],
+    };
 
-  return {
-    owner: config.wallet.address,
-    spender: config.currentNetwork.bridgeFactoryAddress,
-    value: amount,
-    nonce,
-    deadline,
-    v,
-    r,
-    s
-  };
+    const value = {
+      owner: wallet.address,
+      spender: currentNetwork.bridgeFactoryAddress,
+      value: amount,
+      nonce,
+      deadline,
+    };
+
+    const signature = await wallet.signTypedData(domain, types, value);
+    const { v, r, s } = ethers.Signature.from(signature);
+
+    return { owner: wallet.address, spender: currentNetwork.bridgeFactoryAddress, value: amount, nonce, deadline, v, r, s };
+  } catch (error) {
+    throw new Error(`Permit signature generation failed: ${(error as Error).message}`);
+  }
 };
 
 export const lockToken = async (
-  config: BridgeConfig,
   tokenAddress: string,
-  amount: bigint,
-  usePermit: boolean = false
+  amount: bigint,           // amount in smallest units (wei)
+  usePermit: boolean = false,
+  targetChainId: number,
 ): Promise<ContractTransactionResponse> => {
-  const bridgeFactory = new Contract(
-    config.currentNetwork.bridgeFactoryAddress,
-    BRIDGE_FACTORY_ABI,
-    config.wallet
-  );
+
+  const { wallet, currentNetwork } = getProviderAndWallet();
+  const bridgeFactory = new Contract(currentNetwork.bridgeFactoryAddress, bridgeFactoryAbi.abi, wallet);
+  const nonce = Date.now();
+
+  const tokenContract = new Contract(tokenAddress, ERC20_ABI, wallet);
 
   if (usePermit) {
-    const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600); // 1 hour
-    const permitData = await generatePermitSignature(config, tokenAddress, amount, deadline);
-    
+    const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600); // 1 hour from now
+    const permitData = await generatePermitSignature(tokenAddress, amount, deadline);
+
     return bridgeFactory.lockTokenWithPermit(
       tokenAddress,
       amount,
+      targetChainId,
+      nonce,
       permitData.deadline,
       permitData.v,
       permitData.r,
       permitData.s
     );
   } else {
-    const tokenContract = new Contract(tokenAddress, ERC20_ABI, config.wallet);
-    await tokenContract.approve(config.currentNetwork.bridgeFactoryAddress, amount);
-    
-    return bridgeFactory.lockToken(tokenAddress, amount);
+    const approveTx = await tokenContract.approve(currentNetwork.bridgeFactoryAddress, amount);
+    await approveTx.wait();
+
+    const allowance = await tokenContract.allowance(wallet.address, currentNetwork.bridgeFactoryAddress);
+    if (allowance < amount) {
+      throw new Error('Approval not confirmed on-chain!');
+    }
+
+    return bridgeFactory.lockToken(tokenAddress, amount, targetChainId, nonce);
   }
 };
 
+
 export const claimToken = async (
-  config: BridgeConfig,
+  userAddress: string,
+  tokenAddress: string,
   amount: bigint,
   nonce: bigint,
   sourceChainId: number,
   signature: string,
   isWrapped: boolean
 ): Promise<ContractTransactionResponse> => {
-  const bridgeFactory = new Contract(
-    config.currentNetwork.bridgeFactoryAddress,
-    BRIDGE_FACTORY_ABI,
-    config.wallet
-  );
+  const { wallet, currentNetwork } = getProviderAndWallet();
+  const bridgeFactory = new Contract(currentNetwork.bridgeFactoryAddress, bridgeFactoryAbi.abi, wallet);
 
   if (isWrapped) {
-    return bridgeFactory.claimWrappedWithSignature(amount, nonce, sourceChainId, signature);
+    return bridgeFactory.claimWrappedWithSignature(
+      userAddress,
+      tokenAddress,
+      amount,
+      nonce,
+      sourceChainId,
+      signature
+    );
   } else {
-    return bridgeFactory.claimOriginalWithSignature(amount, nonce, sourceChainId, signature);
+    return bridgeFactory.claimOriginalWithSignature(
+      userAddress,
+      tokenAddress,
+      amount,
+      nonce,
+      sourceChainId,
+      signature
+    );
   }
 };
 
 export const returnToken = async (
-  config: BridgeConfig,
-  amount: bigint
+  wrappedTokenAddress: string,
+  originalTokenAddress: string,
+  amount: bigint,
+  targetChainId: number,
+  nonce: number
 ): Promise<ContractTransactionResponse> => {
-  const bridgeFactory = new Contract(
-    config.currentNetwork.bridgeFactoryAddress,
-    BRIDGE_FACTORY_ABI,
-    config.wallet
-  );
+  const { wallet, currentNetwork } = getProviderAndWallet();
+  const bridgeFactory = new Contract(currentNetwork.bridgeFactoryAddress, bridgeFactoryAbi.abi, wallet);
 
-  return bridgeFactory.burnWrappedForReturn(amount);
-}; 
+  return bridgeFactory.burnWrappedForReturn(wrappedTokenAddress, originalTokenAddress, amount, targetChainId, nonce);
+};

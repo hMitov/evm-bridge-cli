@@ -1,7 +1,8 @@
 #!/usr/bin/env node
+import dotenv from 'dotenv';
+dotenv.config();
 
 import { Command } from 'commander';
-import dotenv from 'dotenv';
 import { SelectTokenCommand } from './commands/SelectTokenCommand';
 import { SelectTargetChainCommand } from './commands/SelectTargetChainCommand';
 import { LockCommand } from './commands/LockCommand';
@@ -9,9 +10,7 @@ import { ClaimCommand } from './commands/ClaimCommand';
 import { ReturnCommand } from './commands/ReturnCommand';
 import { HistoryCommand } from './commands/HistoryCommand';
 import { SwitchNetworkCommand } from './commands/SwitchNetworkCommand';
-
-// Load environment variables
-dotenv.config();
+import { Relayer } from './relayer/Relayer';
 
 const program = new Command();
 
@@ -74,6 +73,35 @@ program
   .action(async () => {
     const command = new SwitchNetworkCommand();
     await command.execute();
+  });
+
+program
+  .command('relayer')
+  .description('Start the relayer process to listen for bridge events')
+  .option('-d, --detach', 'Run in detached mode (background process)')
+  .action(async (options) => {
+    const relayer = new Relayer();
+    console.log('[Relayer] Starting relayer process...');
+    
+    if (options.detach) {
+      // Detach from parent process
+      process.stdin.end();
+      process.stdout.unref();
+      process.stderr.unref();
+    }
+
+    // Handle process termination
+    process.on('SIGINT', () => {
+      console.log('\n[Relayer] Shutting down...');
+      relayer.stop();
+      process.exit(0);
+    });
+
+    process.on('SIGTERM', () => {
+      console.log('\n[Relayer] Shutting down...');
+      relayer.stop();
+      process.exit(0);
+    });
   });
 
 program.parse(); 
