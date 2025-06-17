@@ -6,6 +6,7 @@ import { CLIConfig } from '../types';
 import * as fs from 'fs';
 import * as path from 'path';
 import { claimsManager, SignedClaim } from './claimsManager';
+import { getNetworkByChainId } from '../config/networks';
 
 export class Relayer {
   private provider!: WebSocketProvider;
@@ -103,6 +104,7 @@ export class Relayer {
 
       try {
         const claim = await this.buildAndSignClaim(event);
+        claim.claimType = 'lock';
         await claimsManager.addClaim(claim);
         this.log('[Relayer] Claim added to ClaimsManager');
       } catch (error) {
@@ -117,10 +119,26 @@ export class Relayer {
 
       try {
         const claim = await this.buildAndSignClaim(event);
+        claim.claimType = 'lock';
         await claimsManager.addClaim(claim);
         this.log('[Relayer] Claim added to ClaimsManager');
       } catch (error) {
         this.log(`[Relayer] Error processing NativeLocked event: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        console.error('[Relayer] Full error:', error);
+      }
+    });
+
+    this.bridgeFactory.on('TokenBurned', async (...args) => {
+      const event = args[args.length - 1] as EventLog;
+      this.log(`[Relayer] TokenBurned event detected:\n${JSON.stringify(this.serializeBigInts(event.args), null, 2)}`);
+    
+      try {
+        const claim = await this.buildAndSignClaim(event);
+        claim.claimType = 'burn';
+        await claimsManager.addClaim(claim);
+        this.log('[Relayer] Claim added to ClaimsManager from TokenBurned');
+      } catch (error) {
+        this.log(`[Relayer] Error processing TokenBurned event: ${error instanceof Error ? error.message : 'Unknown error'}`);
         console.error('[Relayer] Full error:', error);
       }
     });
@@ -148,7 +166,7 @@ export class Relayer {
       this.log('[Relayer] ERROR: Missing event argument: ' + JSON.stringify(safeArgs));
       throw new Error('Missing event argument in TokenLocked/NativeLocked event');
     }
-    const contractAddress = this.bridgeFactory.target || this.bridgeFactory.address;
+    const targetBridgeFactoryAddress = getNetworkByChainId(targetChainId).bridgeFactoryAddress;
 
     this.log('[Relayer] Signing claim with params: ' + JSON.stringify({
       user,
@@ -156,7 +174,7 @@ export class Relayer {
       amount: amount.toString(),
       nonce: nonce.toString(),
       sourceChainId: this.cliConfig.currentNetwork.chainId,
-      contractAddress
+      targetBridgeFactoryAddress
     }, null, 2));
 
     // When hashing, keep BigInts, do NOT convert to strings here!
@@ -168,7 +186,7 @@ export class Relayer {
         amount,
         nonce,
         this.cliConfig.currentNetwork.chainId,
-        contractAddress
+        targetBridgeFactoryAddress
       ]
     );
 

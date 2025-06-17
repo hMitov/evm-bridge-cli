@@ -19,7 +19,7 @@ export class ClaimCommand extends BaseCommand {
     const { wallet } = getProviderAndWallet();
     const userAddress = wallet.address.toLowerCase();
 
-    const claim: SignedClaim | null = await claimsManager.getNextUnclaimedClaim(userAddress);
+    const claim: SignedClaim | null = await claimsManager.getNextUnclaimedClaim(userAddress, 'lock');
     console.log('DEBUG: claim', claim);
 
     if (!claim) {

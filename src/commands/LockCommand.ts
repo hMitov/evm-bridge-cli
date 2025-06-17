@@ -72,6 +72,9 @@ export class LockCommand extends BaseCommand {
       const allowance = await tokenContract.allowance(wallet.address, config.currentNetwork.bridgeFactoryAddress);
       console.log('Allowance:', allowance.toString());
 
+      const nonce = await tokenContract.nonces(wallet.address);
+      console.log('Nonce:', nonce.toString());
+
       console.log(`\nLocking ${amount} tokens (${amountWei.toString()} wei) to chain ID ${targetChainId}...`);
 
       const tx = await lockToken(tokenAddress, amountWei, usePermit, targetChainId);
@@ -81,6 +84,43 @@ export class LockCommand extends BaseCommand {
 
       console.log(`Transaction confirmed in block ${receipt?.blockNumber}`);
       console.log(`Gas used: ${receipt?.gasUsed.toString()}`);
+
+      const name = await tokenContract.name();
+      const provider = wallet.provider;
+      if (!provider) throw new Error('Wallet provider is null');
+      const chainId = (await provider.getNetwork()).chainId;
+
+      const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600); // 1 hour from now
+
+      const domain = {
+        name,
+        version: "1",
+        chainId,
+        verifyingContract: tokenAddress,
+      };
+
+      const types = {
+        Permit: [
+          { name: "owner", type: "address" },
+          { name: "spender", type: "address" },
+          { name: "value", type: "uint256" },
+          { name: "nonce", type: "uint256" },
+          { name: "deadline", type: "uint256" },
+        ],
+      };
+
+      const value = {
+        owner: wallet.address,
+        spender: config.currentNetwork.bridgeFactoryAddress,
+        value: amount.toString(),
+        nonce: nonce.toString(),
+        deadline: deadline.toString(),
+      };
+
+      console.log({ domain, types, value });
+
+      const signature = await wallet.signTypedData(domain, types, value);
+      const { v, r, s } = ethers.Signature.from(signature);
     } catch (error) {
       console.error('Error locking tokens:', error instanceof Error ? error.message : 'Unknown error');
       throw error;

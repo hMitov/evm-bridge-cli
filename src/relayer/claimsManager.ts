@@ -10,6 +10,7 @@ export interface SignedClaim {
   nonce: string;
   signature: string;
   claimed?: boolean;
+  claimType?: 'lock' | 'burn'; // Optional claim type
 }
 
 
@@ -72,11 +73,14 @@ export class ClaimsManager {
     await this.saveToDisk();
   }
 
-  async getNextUnclaimedClaim(user: string): Promise<SignedClaim | null> {
+  async getNextUnclaimedClaim(user: string, claimType?: 'lock' | 'burn'): Promise<SignedClaim | null> {
     await this.loadFromDisk();
     const checksummedUser = ethers.getAddress(user);
     const userClaims = this.claims.get(checksummedUser) || [];
-    return userClaims.find(c => !c.claimed) || null;
+    const filteredClaims = claimType
+      ? userClaims.filter(c => !c.claimed && c.claimType === claimType)
+      : userClaims.filter(c => !c.claimed);
+    return filteredClaims[0] || null;
   }
 
   async markClaimAsClaimed(user: string, nonce: string): Promise<void> {

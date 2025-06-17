@@ -4,6 +4,9 @@ import * as werc20Abi from '../contracts/abis/WERC20.json';
 import { cliConfigManager } from '../config/cliConfig';
 import { USER_PRIVATE_KEY } from '../config/config';
 import { PermitData, TokenInfo } from '../types';
+import { networks } from '../config/networks';
+import { config } from 'dotenv';
+import { getNetworkByChainId, getNetworkList } from '../config/networks';
 
 
 const ERC20_ABI = [
@@ -59,58 +62,63 @@ export const getTokenInfo = async (
 };
 
 
-export const generatePermitSignature = async (
+async function generatePermitSignature(
   tokenAddress: string,
+  wallet: ethers.Wallet,
+  spender: string,
   amount: bigint,
   deadline: bigint
-): Promise<PermitData> => {
-  const { wallet, currentNetwork } = getProviderAndWallet();
-  const tokenContract = new Contract(tokenAddress, ERC20_ABI, wallet.provider);
+) {
+  const ERC20_ABI = [
+    "function name() view returns (string)",
+    "function nonces(address) view returns (uint256)"
+  ];
 
-  try {
-    const nonce = await tokenContract.nonces(wallet.address);
+  const tokenContract = new Contract(tokenAddress, ERC20_ABI, wallet);
+  const nonce = await tokenContract.nonces(wallet.address);
+  const name = await tokenContract.name();
 
-    const domain = {
-      name: await tokenContract.name(),
-      version: '1',
-      chainId: currentNetwork.chainId,
-      verifyingContract: tokenAddress,
-    };
+  const provider = wallet.provider;
+  if (!provider) throw new Error('Wallet provider is null');
+  const chainId = (await provider.getNetwork()).chainId;
 
-    const types = {
-      Permit: [
-        { name: 'owner', type: 'address' },
-        { name: 'spender', type: 'address' },
-        { name: 'value', type: 'uint256' },
-        { name: 'nonce', type: 'uint256' },
-        { name: 'deadline', type: 'uint256' },
-      ],
-    };
+  const domain = {
+    name,
+    version: '1',
+    chainId,
+    verifyingContract: tokenAddress,
+  };
 
-    const value = {
-      owner: wallet.address,
-      spender: currentNetwork.bridgeFactoryAddress,
-      value: amount,
-      nonce,
-      deadline,
-    };
+  const types = {
+    Permit: [
+      { name: 'owner', type: 'address' },
+      { name: 'spender', type: 'address' },
+      { name: 'value', type: 'uint256' },
+      { name: 'nonce', type: 'uint256' },
+      { name: 'deadline', type: 'uint256' },
+    ]
+  };
 
-    const signature = await wallet.signTypedData(domain, types, value);
-    const { v, r, s } = ethers.Signature.from(signature);
+  const value = {
+    owner: wallet.address,
+    spender,
+    value: amount.toString(),   // convert bigint to string
+    nonce: nonce,    // convert bigint to string
+    deadline: deadline.toString(), // convert bigint to string
+  };
 
-    return { owner: wallet.address, spender: currentNetwork.bridgeFactoryAddress, value: amount, nonce, deadline, v, r, s };
-  } catch (error) {
-    throw new Error(`Permit signature generation failed: ${(error as Error).message}`);
-  }
-};
+  const signature = await wallet.signTypedData(domain, types, value);
+  const sigObj = ethers.Signature.from(signature);
+
+  return sigObj;
+}
 
 export const lockToken = async (
   tokenAddress: string,
-  amount: bigint,           // amount in smallest units (wei)
+  amount: bigint,
   usePermit: boolean = false,
   targetChainId: number,
 ): Promise<ContractTransactionResponse> => {
-
   const { wallet, currentNetwork } = getProviderAndWallet();
   const bridgeFactory = new Contract(currentNetwork.bridgeFactoryAddress, bridgeFactoryAbi.abi, wallet);
   const nonce = Date.now();
@@ -118,15 +126,15 @@ export const lockToken = async (
   const tokenContract = new Contract(tokenAddress, ERC20_ABI, wallet);
 
   if (usePermit) {
-    const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600); // 1 hour from now
-    const permitData = await generatePermitSignature(tokenAddress, amount, deadline);
+    const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
+    const permitData = await generatePermitSignature(tokenAddress, wallet, currentNetwork.bridgeFactoryAddress, amount, deadline);
 
     return bridgeFactory.lockTokenWithPermit(
       tokenAddress,
       amount,
       targetChainId,
       nonce,
-      permitData.deadline,
+      deadline,
       permitData.v,
       permitData.r,
       permitData.s
@@ -136,14 +144,11 @@ export const lockToken = async (
     await approveTx.wait();
 
     const allowance = await tokenContract.allowance(wallet.address, currentNetwork.bridgeFactoryAddress);
-    if (allowance < amount) {
-      throw new Error('Approval not confirmed on-chain!');
-    }
+    if (allowance < amount) throw new Error('Approval not confirmed on-chain!');
 
     return bridgeFactory.lockToken(tokenAddress, amount, targetChainId, nonce);
   }
 };
-
 
 export const claimToken = async (
   userAddress: string,
@@ -154,8 +159,14 @@ export const claimToken = async (
   signature: string,
   isWrapped: boolean
 ): Promise<ContractTransactionResponse> => {
-  const { wallet, currentNetwork } = getProviderAndWallet();
-  const bridgeFactory = new Contract(currentNetwork.bridgeFactoryAddress, bridgeFactoryAbi.abi, wallet);
+
+  const targetChainId = cliConfigManager.getCliConfig().targetChainId!;
+  const targetNetwork = getNetworkByChainId(targetChainId);
+  const provider = new ethers.WebSocketProvider(targetNetwork.wsUrl);
+  const wallet = new ethers.Wallet(USER_PRIVATE_KEY, provider);
+
+
+  const bridgeFactory = new Contract(targetNetwork.bridgeFactoryAddress, bridgeFactoryAbi.abi, wallet);
 
   if (isWrapped) {
     return bridgeFactory.claimWrappedWithSignature(

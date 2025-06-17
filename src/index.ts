@@ -11,6 +11,7 @@ import { ReturnCommand } from './commands/ReturnCommand';
 import { HistoryCommand } from './commands/HistoryCommand';
 import { SwitchNetworkCommand } from './commands/SwitchNetworkCommand';
 import { Relayer } from './relayer/Relayer';
+import { LockWithPermitCommand } from './commands/LockWithPermit';
 
 const program = new Command();
 
@@ -40,6 +41,14 @@ program
   .description('Lock tokens for bridging')
   .action(async () => {
     const command = new LockCommand();
+    await command.execute();
+  });
+
+program
+  .command('lock-with-permit')
+  .description('Lock tokens for bridging with permit')
+  .action(async () => {
+    const command = new LockWithPermitCommand();
     await command.execute();
   });
 
