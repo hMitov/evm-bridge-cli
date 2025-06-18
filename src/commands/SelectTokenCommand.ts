@@ -10,7 +10,6 @@ export class SelectTokenCommand extends BaseCommand {
   }
 
   protected async action(): Promise<void> {
-    // Always fetch fresh config and provider
     const cliConfig = cliConfigManager.getCliConfig();
     const provider = new ethers.WebSocketProvider(cliConfig.currentNetwork.wsUrl);
 
@@ -44,7 +43,6 @@ export class SelectTokenCommand extends BaseCommand {
       console.log(`Your Balance: ${tokenInfo.balance}`);
       console.log(`Address: ${tokenInfo.address}`);
 
-      // Persist selected token in config
       cliConfig.selectedToken = tokenAddress;
       cliConfigManager.saveCliConfig(cliConfig);
     } catch (error) {

@@ -13,11 +13,12 @@ function getProviderAndWallet() {
   return { provider, wallet, currentNetwork };
 }
 
-export class ClaimCommand extends BaseCommand {
+export class ClaimWrappedCommand extends BaseCommand {
 
   protected async action(): Promise<void> {
     const { wallet } = getProviderAndWallet();
     const userAddress = wallet.address.toLowerCase();
+  
 
     const claim: SignedClaim | null = await claimsManager.getNextUnclaimedClaim(userAddress, 'lock');
     console.log('DEBUG: claim', claim);
@@ -27,24 +28,23 @@ export class ClaimCommand extends BaseCommand {
       return;
     }
 
-    const { user, token, amount, nonce, sourceChainId, signature } = claim;
+    const { user, token, amount, sourceChainId, nonce, signature } = claim;
 
     const amountFormatted = ethers.formatUnits(amount, 18); // Adjust decimals dynamically if needed
 
     console.log(`Claiming tokens for amount: ${amountFormatted}, nonce: ${nonce}, sourceChainId: ${sourceChainId}`);
 
     try {
-      const amountWei = ethers.parseUnits(amountFormatted, 18); // Assuming 18 decimals for simplicity
       console.log('\nClaiming tokens...');
 
       const tx = await claimToken(
         user,
         token,
-        BigInt(amount),
-        BigInt(nonce),
+        Number(amount),
+        Number(nonce),
         Number(sourceChainId),
         signature,
-        /* isWrapped: */ true // or decide dynamically if needed
+        true
       );
 
       console.log('DEBUG: tx', tx);
@@ -54,7 +54,6 @@ export class ClaimCommand extends BaseCommand {
       console.log(`Transaction confirmed in block ${receipt?.blockNumber}`);
       console.log(`Gas used: ${receipt?.gasUsed.toString()}`);
 
-      // Mark claim as processed in claimsManager
       await claimsManager.markClaimAsClaimed(userAddress, nonce);
     } catch (error) {
       console.error('Error claiming tokens:', error instanceof Error ? error.message : 'Unknown error');

@@ -25,7 +25,6 @@ export class SelectTargetChainCommand extends BaseCommand {
         }
       ]);
 
-      // Save target chain ID in CLI config
       cliConfig.targetChainId = targetChainId;
       cliConfigManager.saveCliConfig(cliConfig);
 

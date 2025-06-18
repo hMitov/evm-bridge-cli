@@ -4,11 +4,11 @@
     [
       {
         "user": "0xf8F0F5c8C3FdC3213C7bf6E4140257F8F09d22A9",
-        "token": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-        "amount": "2000",
-        "sourceChainId": "84532",
-        "nonce": "1750144046389",
-        "signature": "0xab5ef7b4cfd516e6fb83794935bff8e2493b24f4bfa8ad5cd816ee3c4d692ba63a5625a63762fd73fc4af28e4210a2b51d3c6c7f2751a1e04acbe23d00ab98e51c",
+        "token": "0x0000000000000000000000000000000000000000",
+        "amount": "9000000",
+        "nonce": "1750250262242",
+        "sourceChainId": "11155111",
+        "signature": "0xe4d29d0a60ad07e7c4b6bfbaac2fe25f390825c0619d002a6fced143a65faa65579078aab79d296f7b573c171a7f84e23a6ea0334d0098718c8c3e5504d1939e1c",
         "claimed": true,
         "claimType": "lock"
       }

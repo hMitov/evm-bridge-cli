@@ -2,7 +2,7 @@ import { ethers, Contract, Wallet, WebSocketProvider, EventLog } from 'ethers';
 import * as bridgeFactoryAbi from '../contracts/abis/BridgeFactory.json';
 import { cliConfigManager } from '../config/cliConfig';
 import { RELAYER_PRIVATE_KEY } from '../config/config';
-import { CLIConfig } from '../types';
+import { NetworkConfig } from '../types';
 import * as fs from 'fs';
 import * as path from 'path';
 import { claimsManager, SignedClaim } from './claimsManager';
@@ -12,16 +12,16 @@ export class Relayer {
   private provider!: WebSocketProvider;
   private wallet!: Wallet;
   private bridgeFactory!: Contract;
-  private cliConfig!: CLIConfig;
+  private networkConfig!: NetworkConfig;
   private listenersActive = false;
 
   private configPollInterval: NodeJS.Timeout | null = null;
   private logStream: fs.WriteStream;
   private reconnectTimeout: NodeJS.Timeout | null = null;
 
-  constructor() {
-    this.cliConfig = cliConfigManager.getCliConfig();
-    this.logStream = fs.createWriteStream(path.join(process.cwd(), 'relayer.log'), { flags: 'a' });
+  constructor(networkConfig: NetworkConfig) {
+    this.networkConfig = networkConfig;
+    this.logStream = fs.createWriteStream(path.join(process.cwd(), `relayer-${networkConfig.chainId}.log`), { flags: 'a' });
     this.initialize();
   }
 
@@ -30,7 +30,7 @@ export class Relayer {
     await claimsManager.loadFromDisk();
     this.log('[Relayer] Claims loaded from disk');
     await this.connect();
-    this.watchConfigChanges();
+    // this.watchConfigChanges();
   }
 
   private log(message: string) {
@@ -58,7 +58,8 @@ export class Relayer {
 
   private async connect() {
     this.detachListeners();
-    const currentNetwork = this.cliConfig.currentNetwork;
+    const currentNetwork = this.networkConfig;
+    console.log("Connecting to network: ", currentNetwork);
 
     try {
       this.provider = new ethers.WebSocketProvider(currentNetwork.wsUrl);
@@ -161,19 +162,28 @@ export class Relayer {
     const safeArgs = this.serializeBigInts(event.args);
     this.log('[Relayer] Event args: ' + JSON.stringify(safeArgs));
 
-    const { user, token, amount, targetChainId, nonce } = event.args;
-    if (!user || !token || !amount || !targetChainId || !nonce) {
+    let user, token, amount, targetChainId, nonce;
+    if (event.eventName === 'TokenLocked') {
+      ({ user, token, amount, targetChainId, nonce } = event.args);
+    } else if (event.eventName === 'NativeLocked') {
+      [user, amount, targetChainId, nonce] = event.args;
+      token = '0x0000000000000000000000000000000000000000';
+    } else {
+      throw new Error(`Unsupported event type: ${event.eventName}`);
+    }
+    if (!user || !amount || !targetChainId || !nonce) {
       this.log('[Relayer] ERROR: Missing event argument: ' + JSON.stringify(safeArgs));
       throw new Error('Missing event argument in TokenLocked/NativeLocked event');
     }
     const targetBridgeFactoryAddress = getNetworkByChainId(targetChainId).bridgeFactoryAddress;
+    console.log("targetBridgeFactoryAddress", targetBridgeFactoryAddress);
 
     this.log('[Relayer] Signing claim with params: ' + JSON.stringify({
       user,
       token,
       amount: amount.toString(),
       nonce: nonce.toString(),
-      sourceChainId: this.cliConfig.currentNetwork.chainId,
+      sourceChainId: this.networkConfig.chainId,
       targetBridgeFactoryAddress
     }, null, 2));
 
@@ -182,10 +192,10 @@ export class Relayer {
       ['address', 'address', 'uint256', 'uint256', 'uint256', 'address'],
       [
         user,
-        token,
+        token === '0x0000000000000000000000000000000000000000' ? '0x0000000000000000000000000000000000000000' : token,
         amount,
         nonce,
-        this.cliConfig.currentNetwork.chainId,
+        this.networkConfig.chainId,
         targetBridgeFactoryAddress
       ]
     );
@@ -200,8 +210,8 @@ export class Relayer {
       user,
       token,
       amount: amount.toString(),
-      sourceChainId: this.cliConfig.currentNetwork.chainId.toString(),
       nonce: nonce.toString(),
+      sourceChainId: this.networkConfig.chainId.toString(),
       signature,
       claimed: false
     };
@@ -217,18 +227,18 @@ export class Relayer {
     }, 5000);
   }
 
-  private watchConfigChanges() {
-    this.configPollInterval = setInterval(async () => {
-      const newConfig = cliConfigManager.getCliConfig();
-      if (
-        newConfig.currentNetwork.wsUrl !== this.cliConfig.currentNetwork.wsUrl ||
-        newConfig.currentNetwork.bridgeFactoryAddress !== this.cliConfig.currentNetwork.bridgeFactoryAddress
-      ) {
-        this.log('[Relayer] Network config changed. Switching...');
-        await this.connect();
-      }
-    }, 5000);
-  }
+  // private watchConfigChanges() {
+  //   this.configPollInterval = setInterval(async () => {
+  //     const newConfig = cliConfigManager.getCliConfig();
+  //     if (
+  //       newConfig.currentNetwork.wsUrl !== this.networkConfig.wsUrl ||
+  //       newConfig.currentNetwork.bridgeFactoryAddress !== this.networkConfig.bridgeFactoryAddress
+  //     ) {
+  //       this.log('[Relayer] Network config changed. Switching...');
+  //       await this.connect();
+  //     }
+  //   }, 5000);
+  // }
 
   public stop() {
     this.detachListeners();
@@ -237,10 +247,4 @@ export class Relayer {
     this.log('[Relayer] Stopped.');
     this.logStream.end();
   }
-}
-
-// Entrypoint for running as a script
-if (require.main === module) {
-  const relayer = new Relayer();
-  console.log('[Relayer] Relayer started.');
 }

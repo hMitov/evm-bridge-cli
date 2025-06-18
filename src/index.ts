@@ -6,12 +6,12 @@ import { Command } from 'commander';
 import { SelectTokenCommand } from './commands/SelectTokenCommand';
 import { SelectTargetChainCommand } from './commands/SelectTargetChainCommand';
 import { LockCommand } from './commands/LockCommand';
-import { ClaimCommand } from './commands/ClaimCommand';
+import { ClaimWrappedCommand } from './commands/ClaimWrappedCommand';
 import { ReturnCommand } from './commands/ReturnCommand';
 import { HistoryCommand } from './commands/HistoryCommand';
 import { SwitchNetworkCommand } from './commands/SwitchNetworkCommand';
-import { Relayer } from './relayer/Relayer';
-import { LockWithPermitCommand } from './commands/LockWithPermit';
+import { LockNativeCommand } from './commands/LockNative';
+import { MultiChainRelayer } from './relayer/MultiChainRelayer';
 
 const program = new Command();
 
@@ -45,18 +45,18 @@ program
   });
 
 program
-  .command('lock-with-permit')
-  .description('Lock tokens for bridging with permit')
+  .command('lock-native')
+  .description('Lock tokens native tokens')
   .action(async () => {
-    const command = new LockWithPermitCommand();
+    const command = new LockNativeCommand();
     await command.execute();
   });
 
 program
-  .command('claim')
+  .command('claim-wrapped')
   .description('Claim tokens on the target chain')
   .action(async () => {
-    const command = new ClaimCommand();
+    const command = new ClaimWrappedCommand();
     await command.execute();
   });
 
@@ -89,7 +89,7 @@ program
   .description('Start the relayer process to listen for bridge events')
   .option('-d, --detach', 'Run in detached mode (background process)')
   .action(async (options) => {
-    const relayer = new Relayer();
+    const relayer = new MultiChainRelayer();
     console.log('[Relayer] Starting relayer process...');
     
     if (options.detach) {

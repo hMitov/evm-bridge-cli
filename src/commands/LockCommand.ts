@@ -4,18 +4,7 @@ import { BaseCommand } from './BaseCommand';
 import { lockToken } from '../utils/blockchain';
 import { cliConfigManager } from '../config/cliConfig';
 import { USER_PRIVATE_KEY } from '../config/config';
-
-const ERC20_ABI = [
-  "function symbol() view returns (string)",
-  "function decimals() view returns (uint8)",
-  "function balanceOf(address) view returns (uint256)",
-  "function approve(address spender, uint256 amount) returns (bool)",
-  "function nonces(address) view returns (uint256)",
-  "function name() view returns (string)",
-  "function allowance(address owner, address spender) view returns (uint256)",
-  "function transfer(address to, uint256 amount) returns (bool)",
-  "function transferFrom(address from, address to, uint256 amount) returns (bool)"
-];
+import werc20Abi from '../contracts/abis/WERC20.json';
 
 function getProviderAndWallet() {
   const currentNetwork = cliConfigManager.getCliConfig().currentNetwork;
@@ -40,7 +29,6 @@ export class LockCommand extends BaseCommand {
       throw new Error('No target chain selected. Please run `select-target-chain` first.');
     }
 
-    // Prompt for amount and permit usage
     const { amount, usePermit } = await inquirer.prompt([
       {
         type: 'input',
@@ -58,15 +46,15 @@ export class LockCommand extends BaseCommand {
         type: 'confirm',
         name: 'usePermit',
         message: 'Use permit for gas-efficient approval?',
-        default: true
+        default: false
       }
     ]);
 
     try {
       const { wallet } = getProviderAndWallet();
-      const tokenContract = new Contract(tokenAddress, ERC20_ABI, wallet.provider);
+      const tokenContract = new Contract(tokenAddress, werc20Abi.abi, wallet.provider);
       const decimals = await tokenContract.decimals();
-      // Parse amount as 18 decimals; consider fetching decimals dynamically for accuracy
+
       const amountWei = ethers.parseUnits(amount, decimals);
 
       const allowance = await tokenContract.allowance(wallet.address, config.currentNetwork.bridgeFactoryAddress);
@@ -85,42 +73,6 @@ export class LockCommand extends BaseCommand {
       console.log(`Transaction confirmed in block ${receipt?.blockNumber}`);
       console.log(`Gas used: ${receipt?.gasUsed.toString()}`);
 
-      const name = await tokenContract.name();
-      const provider = wallet.provider;
-      if (!provider) throw new Error('Wallet provider is null');
-      const chainId = (await provider.getNetwork()).chainId;
-
-      const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600); // 1 hour from now
-
-      const domain = {
-        name,
-        version: "1",
-        chainId,
-        verifyingContract: tokenAddress,
-      };
-
-      const types = {
-        Permit: [
-          { name: "owner", type: "address" },
-          { name: "spender", type: "address" },
-          { name: "value", type: "uint256" },
-          { name: "nonce", type: "uint256" },
-          { name: "deadline", type: "uint256" },
-        ],
-      };
-
-      const value = {
-        owner: wallet.address,
-        spender: config.currentNetwork.bridgeFactoryAddress,
-        value: amount.toString(),
-        nonce: nonce.toString(),
-        deadline: deadline.toString(),
-      };
-
-      console.log({ domain, types, value });
-
-      const signature = await wallet.signTypedData(domain, types, value);
-      const { v, r, s } = ethers.Signature.from(signature);
     } catch (error) {
       console.error('Error locking tokens:', error instanceof Error ? error.message : 'Unknown error');
       throw error;
