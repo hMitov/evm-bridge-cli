@@ -38,7 +38,7 @@ program
   });
 
 program
-  .command('lock')
+  .command('lock-token')
   .description('Lock tokens for bridging')
   .action(async () => {
     const command = new LockTokenCommand();

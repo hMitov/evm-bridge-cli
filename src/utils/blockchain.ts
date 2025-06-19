@@ -283,7 +283,7 @@ export async function burnToken(
     console.log('Wrapped Token:', wrappedTokenAddress);
     console.log('Original Token:', originalTokenAddress);
     console.log('Amount:', amount.toString());
-    console.log('Original Chain ID:', originalChainId);
+    console.log('Original Chain ID:', originalChainId.toString());
     console.log('Wallet:', wallet.address);
     console.log('--------------------------------\n');
 
@@ -305,8 +305,8 @@ export async function burnToken(
       wrappedTokenAddress,
       originalTokenAddress,
       amount.toString(),
-      originalChainId,
-      Number(nonce)
+      originalChainId.toString(),
+      nonce.toString()
     );
 
     console.log("Tx: ", tx);

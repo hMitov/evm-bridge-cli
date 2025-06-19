@@ -156,7 +156,7 @@ export class Relayer {
   }
 
   /**
-   * Signs the claim for TokenLocked or NativeLocked event
+   * Signs the claim for TokenLocked, NativeLocked, or TokenBurned event
    */
   private async buildAndSignClaim(event: EventLog): Promise<SignedClaim> {
     const safeArgs = this.serializeBigInts(event.args);
@@ -168,12 +168,23 @@ export class Relayer {
     } else if (event.eventName === 'NativeLocked') {
       [user, amount, targetChainId, nonce] = event.args;
       token = '0x0000000000000000000000000000000000000000';
+    } else if (event.eventName === 'TokenBurned') {
+      [user, token, amount, targetChainId, nonce] = event.args;
     } else {
       throw new Error(`Unsupported event type: ${event.eventName}`);
     }
-    if (!user || !amount || !targetChainId || !nonce) {
+    
+    // Debug logging for each parameter
+    this.log(`[Relayer] Extracted parameters:`);
+    this.log(`  user: ${user}`);
+    this.log(`  token: ${token}`);
+    this.log(`  amount: ${amount}`);
+    this.log(`  targetChainId: ${targetChainId}`);
+    this.log(`  nonce: ${nonce}`);
+    
+    if (!user || !token || !amount || !targetChainId || !nonce) {
       this.log('[Relayer] ERROR: Missing event argument: ' + JSON.stringify(safeArgs));
-      throw new Error('Missing event argument in TokenLocked/NativeLocked event');
+      throw new Error('Missing event argument in event');
     }
     const targetBridgeFactoryAddress = getNetworkByChainId(targetChainId).bridgeFactoryAddress;
     console.log("targetBridgeFactoryAddress", targetBridgeFactoryAddress);

@@ -6,6 +6,7 @@ import { cliConfigManager } from '../config/cliConfig';
 import { USER_PRIVATE_KEY } from '../config/config';
 import werc20Abi from '../contracts/abis/WERC20.json';
 import { TxLogger } from '../utils/txLogger';
+import { getNetworkByChainId } from '../config/networks';
 
 function getProviderAndWallet() {
   const currentNetwork = cliConfigManager.getCliConfig().currentNetwork;
@@ -19,6 +20,17 @@ export class LockTokenCommand extends BaseCommand {
   protected async action(): Promise<void> {
     const config = cliConfigManager.getCliConfig();
     console.log('DEBUG: Current CLI config:', config);
+
+
+
+
+    // const network = getNetworkByChainId(config.targetChainId!);
+    // const provider = new ethers.WebSocketProvider(network.wsUrl);
+    
+    // const usdcAddress = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"; // USDC contract on Ethereum Sepolia
+    // const usdcContract = new ethers.Contract(usdcAddress, werc20Abi.abi, provider);
+    // const decimals = await usdcContract.decimals();
+    // console.log("Decimals: ", decimals);
 
     const tokenAddress = config.selectedToken;
     if (!tokenAddress) {

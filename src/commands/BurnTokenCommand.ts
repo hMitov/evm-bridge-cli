@@ -75,7 +75,11 @@ export class BurnTokenCommand extends BaseCommand {
         wallet.provider
       );
 
+      const balance = await tokenContract.balanceOf(wallet.address);
+      console.log("Balance:", balance.toString());
+
         const decimals = await tokenContract.decimals();
+        console.log("Decimals: ", decimals);
         const amountWei = ethers.parseUnits(amount, decimals);
 
         console.log(`\nBurning ${amount} wrapped tokens on Sepolia (${amountWei.toString()} wei) to return to Base...`);
@@ -84,7 +88,7 @@ export class BurnTokenCommand extends BaseCommand {
           wrappedTokenAddress,
           originalTokenAddress!,
           amountWei,
-          Number(originalChainId),
+          originalChainId,
           wallet,
         );
 

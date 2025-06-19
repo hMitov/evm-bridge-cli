@@ -3,7 +3,7 @@
     "name": "Base",
     "chainId": 84532,
     "wsUrl": "wss://base-sepolia.infura.io/ws/v3/d3238ad56c6e4425b22d8734d680a5ed",
-    "bridgeFactoryAddress": "0x479D045e2112058740fA4227a469D74dBb97b3B3",
+    "bridgeFactoryAddress": "0xA4FBa5448Fe31d13611A149A4258e148B39aEF45",
     "explorerUrl": "https://basescan.org"
   },
   "selectedToken": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
