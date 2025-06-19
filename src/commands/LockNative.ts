@@ -5,6 +5,9 @@ import { cliConfigManager } from '../config/cliConfig';
 import { lockNative, lockToken } from '../utils/blockchain';  // <- import your blockchain helper
 import { USER_PRIVATE_KEY } from '../config/config';
 import werc20Abi from '../contracts/abis/WERC20.json';
+import fs from 'fs';
+import path from 'path';
+import { TxLogger } from '../utils/txLogger';
 
 function getProviderAndWallet() {
     const currentNetwork = cliConfigManager.getCliConfig().currentNetwork;
@@ -13,7 +16,9 @@ function getProviderAndWallet() {
     return { provider, wallet, currentNetwork };
 }
 
+
 export class LockNativeCommand extends BaseCommand {
+
   protected async action(): Promise<void> {
     const config = cliConfigManager.getCliConfig();
 
@@ -41,6 +46,18 @@ export class LockNativeCommand extends BaseCommand {
       console.log(`Transaction sent: ${tx.hash}`);
       const receipt = await tx.wait();
       console.log(`Transaction confirmed in block ${receipt?.blockNumber ?? 'unknown'}, gas used: ${receipt?.gasUsed?.toString() ?? 'unknown'}`);
+
+      // Log transaction to common file
+      TxLogger.logTransaction({
+        command: 'lockNative',
+        hash: tx.hash,
+        blockNumber: receipt?.blockNumber,
+        from: tx.from,
+        to: tx.to,
+        gasUsed: receipt?.gasUsed?.toString(),
+        amount: amountWei.toString(),
+        chainId: config.currentNetwork.chainId,
+      });
     } catch (error) {
       console.error('Error locking native ETH:', error instanceof Error ? error.message : error);
       throw error;

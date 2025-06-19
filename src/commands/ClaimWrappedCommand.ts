@@ -5,6 +5,7 @@ import { cliConfigManager } from '../config/cliConfig';
 import { claimsManager } from '../relayer/claimsManager'; // Import claimsManager singleton
 import { USER_PRIVATE_KEY } from '../config/config';
 import { SignedClaim } from '../relayer/claimsManager';
+import { TxLogger } from '../utils/txLogger';
 
 function getProviderAndWallet() {
   const currentNetwork = cliConfigManager.getCliConfig().currentNetwork;
@@ -53,6 +54,20 @@ export class ClaimWrappedCommand extends BaseCommand {
       const receipt = await tx.wait();
       console.log(`Transaction confirmed in block ${receipt?.blockNumber}`);
       console.log(`Gas used: ${receipt?.gasUsed.toString()}`);
+
+      // Log transaction to common file
+      TxLogger.logTransaction({
+        command: 'claim',
+        hash: tx.hash,
+        blockNumber: receipt?.blockNumber,
+        from: tx.from,
+        to: tx.to,
+        gasUsed: receipt?.gasUsed?.toString(),
+        user,
+        token,
+        amount,
+        chainId: Number(sourceChainId),
+      });
 
       await claimsManager.markClaimAsClaimed(userAddress, nonce);
     } catch (error) {

@@ -249,28 +249,25 @@ export const claimToken = async (
   }
 };
 
-export async function returnToken(
+export async function burnToken(
   wrappedTokenAddress: string,
-  targetTokenAddress: string,
+  originalTokenAddress: string,
   amount: bigint,
-  targetChainId: number,
+  originalChainId: number,
   wallet: ethers.Wallet
 ): Promise<ethers.TransactionResponse> {
   try {
-    const targetNetwork = getNetworkByChainId(targetChainId);
-    const bridgeFactory = new Contract(
-      targetNetwork.bridgeFactoryAddress,
-      bridgeFactoryAbi.abi,
-      wallet
-    );
+    const targetNetwork = getNetworkByChainId(cliConfigManager.getCliConfig().targetChainId!);
+    const bridgeFactory = new Contract(targetNetwork.bridgeFactoryAddress, bridgeFactoryAbi.abi, wallet);
+    console.log("Bridge Factory: ", targetNetwork.bridgeFactoryAddress);
 
     console.log('\nReturn Token Transaction Details:');
     console.log('--------------------------------');
     console.log('Network:', targetNetwork.name);
     console.log('Wrapped Token:', wrappedTokenAddress);
-    console.log('Original Token:', targetTokenAddress);
+    console.log('Original Token:', originalTokenAddress);
     console.log('Amount:', amount.toString());
-    console.log('Target Chain ID:', targetChainId);
+    console.log('Original Chain ID:', originalChainId);
     console.log('Wallet:', wallet.address);
     console.log('--------------------------------\n');
 
@@ -278,23 +275,25 @@ export async function returnToken(
     if (!wallet.provider) {
       throw new Error('Wallet provider is not initialized');
     }
-    const nonce = await wallet.provider.getTransactionCount(wallet.address);
+    const nonce = Date.now();
 
     console.log("Nonce: ", nonce);
     console.log("Wrapped Token Address: ", wrappedTokenAddress);
-    console.log("Target Token Address: ", targetTokenAddress);
+    console.log("Original Token Address: ", originalTokenAddress);
     console.log("Amount: ", amount);
-    console.log("Target Chain ID: ", targetChainId);
+    console.log("Original Chain ID: ", originalChainId);
     console.log("Wallet: ", wallet.address);
     console.log("--------------------------------\n");
 
     const tx = await bridgeFactory.burnWrappedForReturn(
       wrappedTokenAddress,
-      targetTokenAddress,
-      amount,
-      targetChainId,
-      nonce
+      originalTokenAddress,
+      amount.toString(),
+      originalChainId,
+      Number(nonce)
     );
+
+    console.log("Tx: ", tx);
 
     console.log(`\nTransaction sent! Hash: ${tx.hash}`);
     console.log('Waiting for confirmation...');

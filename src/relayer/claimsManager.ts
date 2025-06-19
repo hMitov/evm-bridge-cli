@@ -83,6 +83,16 @@ export class ClaimsManager {
     return filteredClaims[0] || null;
   }
 
+  async getNextClaimedClaim(user: string, claimType?: 'lock' | 'burn'): Promise<SignedClaim | null> {
+    await this.loadFromDisk();
+    const checksummedUser = ethers.getAddress(user);
+    const userClaims = this.claims.get(checksummedUser) || [];
+    const filteredClaims = claimType
+      ? userClaims.filter(c => c.claimed && c.claimType === claimType)
+      : userClaims.filter(c => c.claimed);
+    return filteredClaims[0] || null;
+  }  
+
   async markClaimAsClaimed(user: string, nonce: string): Promise<void> {
     const checksummedUser = ethers.getAddress(user);
     const userClaims = this.claims.get(checksummedUser) || [];

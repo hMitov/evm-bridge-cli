@@ -7,7 +7,8 @@ import { SelectTokenCommand } from './commands/SelectTokenCommand';
 import { SelectTargetChainCommand } from './commands/SelectTargetChainCommand';
 import { LockCommand } from './commands/LockCommand';
 import { ClaimWrappedCommand } from './commands/ClaimWrappedCommand';
-import { ReturnCommand } from './commands/ReturnCommand';
+import { ClaimOriginCommand } from './commands/ClaimOriginCommand';
+import { BurnTokenCommand } from './commands/BurnTokenCommand';
 import { HistoryCommand } from './commands/HistoryCommand';
 import { SwitchNetworkCommand } from './commands/SwitchNetworkCommand';
 import { LockNativeCommand } from './commands/LockNative';
@@ -61,10 +62,18 @@ program
   });
 
 program
-  .command('return')
-  .description('Return tokens to the source chain')
+  .command('claim-origin')
+  .description('Claim tokens on the source chain')
   .action(async () => {
-    const command = new ReturnCommand();
+    const command = new ClaimOriginCommand();
+    await command.execute();
+  });
+
+program
+  .command('burn-token')
+  .description('Burn wrapped tokens on the target chain')
+  .action(async () => {
+    const command = new BurnTokenCommand();
     await command.execute();
   });
 

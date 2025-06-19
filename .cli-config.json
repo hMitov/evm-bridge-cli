@@ -1,11 +1,11 @@
 {
   "currentNetwork": {
-    "name": "Sepolia",
-    "chainId": 11155111,
-    "wsUrl": "wss://sepolia.infura.io/ws/v3/d3238ad56c6e4425b22d8734d680a5ed",
-    "bridgeFactoryAddress": "0x8984774a9382Ab8daFC427c7a547067D30B620F2",
-    "explorerUrl": "https://sepolia.etherscan.io"
+    "name": "Base",
+    "chainId": 84532,
+    "wsUrl": "wss://base-sepolia.infura.io/ws/v3/d3238ad56c6e4425b22d8734d680a5ed",
+    "bridgeFactoryAddress": "0x479D045e2112058740fA4227a469D74dBb97b3B3",
+    "explorerUrl": "https://basescan.org"
   },
   "selectedToken": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-  "targetChainId": 84532
+  "targetChainId": 11155111
 }

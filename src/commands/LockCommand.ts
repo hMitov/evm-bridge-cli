@@ -5,6 +5,7 @@ import { lockToken } from '../utils/blockchain';
 import { cliConfigManager } from '../config/cliConfig';
 import { USER_PRIVATE_KEY } from '../config/config';
 import werc20Abi from '../contracts/abis/WERC20.json';
+import { TxLogger } from '../utils/txLogger';
 
 function getProviderAndWallet() {
   const currentNetwork = cliConfigManager.getCliConfig().currentNetwork;
@@ -57,12 +58,6 @@ export class LockCommand extends BaseCommand {
 
       const amountWei = ethers.parseUnits(amount, decimals);
 
-      const allowance = await tokenContract.allowance(wallet.address, config.currentNetwork.bridgeFactoryAddress);
-      console.log('Allowance:', allowance.toString());
-
-      const nonce = await tokenContract.nonces(wallet.address);
-      console.log('Nonce:', nonce.toString());
-
       console.log(`\nLocking ${amount} tokens (${amountWei.toString()} wei) to chain ID ${targetChainId}...`);
 
       const tx = await lockToken(tokenAddress, amountWei, usePermit, targetChainId);
@@ -72,6 +67,19 @@ export class LockCommand extends BaseCommand {
 
       console.log(`Transaction confirmed in block ${receipt?.blockNumber}`);
       console.log(`Gas used: ${receipt?.gasUsed.toString()}`);
+
+      // Log transaction to common file
+      TxLogger.logTransaction({
+        command: 'lock',
+        hash: tx.hash,
+        blockNumber: receipt?.blockNumber,
+        from: tx.from,
+        to: tx.to,
+        gasUsed: receipt?.gasUsed?.toString(),
+        tokenAddress,
+        amount: amountWei.toString(),
+        chainId: config.currentNetwork.chainId,
+      });
 
     } catch (error) {
       console.error('Error locking tokens:', error instanceof Error ? error.message : 'Unknown error');
