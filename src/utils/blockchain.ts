@@ -1,4 +1,4 @@
-import { ethers, Contract, ContractTransactionResponse } from 'ethers';
+import { ethers, Contract, ContractTransactionResponse, Signature } from 'ethers';
 import * as bridgeFactoryAbi from '../contracts/abis/BridgeFactory.json';
 import * as werc20Abi from '../contracts/abis/WERC20.json';
 import { cliConfigManager } from '../config/cliConfig';
@@ -7,23 +7,22 @@ import { PermitData, TokenInfo } from '../types';
 import { networks } from '../config/networks';
 import { config } from 'dotenv';
 import { getNetworkByChainId, getNetworkList } from '../config/networks';
-
 function arrayify(data: string): Uint8Array {
   return Uint8Array.from(Buffer.from(data.replace(/^0x/, ''), 'hex'));
 }
 
-const ERC20_ABI = [
-  "function symbol() view returns (string)",
-  "function decimals() view returns (uint8)",
-  "function balanceOf(address) view returns (uint256)",
-  "function approve(address spender, uint256 amount) returns (bool)",
-  "function nonces(address) view returns (uint256)",
-  "function name() view returns (string)",
-  "function allowance(address owner, address spender) view returns (uint256)",
-  "function transfer(address to, uint256 amount) returns (bool)",
-  "function transferFrom(address from, address to, uint256 amount) returns (bool)",
-  "function DOMAIN_SEPARATOR() view returns (bytes32)"
-];
+// const ERC20_ABI = [
+//   "function symbol() view returns (string)",
+//   "function decimals() view returns (uint8)",
+//   "function balanceOf(address) view returns (uint256)",
+//   "function approve(address spender, uint256 amount) returns (bool)",
+//   "function nonces(address) view returns (uint256)",
+//   "function name() view returns (string)",
+//   "function allowance(address owner, address spender) view returns (uint256)",
+//   "function transfer(address to, uint256 amount) returns (bool)",
+//   "function transferFrom(address from, address to, uint256 amount) returns (bool)",
+//   "function DOMAIN_SEPARATOR() view returns (bytes32)"
+// ];
 
 function getProviderAndWallet() {
   const currentNetwork = cliConfigManager.getCliConfig().currentNetwork;
@@ -36,7 +35,7 @@ export const getTokenInfo = async (
   tokenAddress: string
 ): Promise<TokenInfo> => {
   const { wallet, currentNetwork } = getProviderAndWallet();
-  const tokenContract = new Contract(tokenAddress, ERC20_ABI, wallet.provider);
+  const tokenContract = new Contract(tokenAddress, werc20Abi.abi, wallet.provider);
 
   try {
     const [symbol, decimals, balance] = await Promise.all([
@@ -70,32 +69,45 @@ async function generatePermitSignature(
   tokenAddress: string,
   wallet: ethers.Wallet,
   spender: string,
-  amount: bigint,
-  deadline: bigint
+  amount: ethers.BigNumberish,
+  deadline: ethers.BigNumberish
 ) {
-  // Attach to the token contract with full ABI including permit-related methods
+  // Attach to token contract (make sure ABI includes permit and nonces)
   const tokenContract = new ethers.Contract(tokenAddress, werc20Abi.abi, wallet);
 
-  // Fetch the nonce from the token contract (must be a BigNumber)
-  const nonceBN = await tokenContract.nonces(wallet.address);
-  const nonce = nonceBN.toString();
-
-  // Fetch token name for domain separator
+    // Step 1: Fetch on-chain DOMAIN_SEPARATOR
+  const onChainDomainSeparator = await tokenContract.DOMAIN_SEPARATOR();
+  console.log("On-chain DOMAIN_SEPARATOR:", onChainDomainSeparator);
+  // Fetch token details
   const name = await tokenContract.name();
+  const nonce = await tokenContract.nonces(wallet.address);
+  const chainId = (await wallet.provider!.getNetwork()).chainId;
 
-  // Fetch current chain ID from wallet's provider
-  const network = await wallet.provider!.getNetwork();
-  const chainId = network.chainId;
-
-  // Build domain according to EIP-712
+  // EIP-712 domain data
   const domain = {
     name,
-    version: "1", // Must match your contract's version in constructor
+    version: "2",
     chainId,
     verifyingContract: tokenAddress,
   };
 
-  // Define the Permit struct types exactly as per your contract
+  const offChainDomainSeparator = ethers.TypedDataEncoder.hashDomain(domain);
+  console.log("Off-chain DOMAIN_SEPARATOR:", offChainDomainSeparator);
+
+    // Compare domain separators
+    if (onChainDomainSeparator !== offChainDomainSeparator) {
+      console.error("Domain separator mismatch! Check token name, version, chainId, and verifyingContract.");
+    } else {
+      console.log("Domain separator matches.");
+    }
+  
+
+      // Step 3: Fetch current nonce and log
+  const nonceBN = await tokenContract.nonces(wallet.address);
+  const nonce1 = nonceBN.toString();
+  console.log("Current nonce from contract:", nonce1);
+
+  // Permit type data
   const types = {
     Permit: [
       { name: "owner", type: "address" },
@@ -106,33 +118,31 @@ async function generatePermitSignature(
     ],
   };
 
-  // The values must be strings or numbers, bigints as strings here
+  // Permit values
   const value = {
     owner: wallet.address,
     spender,
     value: amount.toString(),
-    nonce,
+    nonce: nonce.toString(),
     deadline: deadline.toString(),
-  };
+  };  
 
-  // Use ethers.js helper to sign typed data with wallet
+  // Sign the typed data
   const signature = await wallet.signTypedData(domain, types, value);
 
-  // Split signature into r,s,v parts
-  const sig = ethers.Signature.from(signature);
+  // Split signature into v, r, s
+  const sig = Signature.from(signature);
+  const { v, r, s } = sig;
 
-  // Verify signature locally (optional, but good sanity check)
-  const recovered = ethers.verifyTypedData(domain, types, value, signature);
-  if (recovered.toLowerCase() !== wallet.address.toLowerCase()) {
+  // Optional sanity check
+  const recoveredAddress = ethers.verifyTypedData(domain, types, value, signature);
+  if (recoveredAddress.toLowerCase() !== wallet.address.toLowerCase()) {
     throw new Error("Signature verification failed");
   }
 
-  return {
-    v: sig.v,
-    r: sig.r,
-    s: sig.s,
-  };
+  return { v, r, s };
 }
+
 
 export const lockToken = async (
   tokenAddress: string,
@@ -147,15 +157,21 @@ export const lockToken = async (
   // const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
   // const permit = await generatePermitSignature(tokenAddress, wallet, currentNetwork.bridgeFactoryAddress, amount, deadline);
 
-  const tokenContract = new Contract(tokenAddress, ERC20_ABI, wallet);
-  const domainSeparator = await tokenContract.DOMAIN_SEPARATOR(); 
-  console.log("Domain Separator:", domainSeparator);
+  const tokenContract = new Contract(tokenAddress, werc20Abi.abi, wallet);
+  // const domainSeparator = await tokenContract.DOMAIN_SEPARATOR(); 
+  // console.log("Domain Separator:", domainSeparator);
 
   // await testTokenPermit(tokenContract, wallet, currentNetwork.bridgeFactoryAddress, amount, deadline, permit);
 
   if (usePermit) {
     const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
-    const permitData = await generatePermitSignature(tokenAddress, wallet, currentNetwork.bridgeFactoryAddress, amount, deadline);
+    const permitData = await generatePermitSignature(
+      tokenAddress, 
+      wallet, 
+      currentNetwork.bridgeFactoryAddress, 
+      amount, 
+      deadline
+    );
 
     return bridgeFactory.lockTokenWithPermit(
       tokenAddress,

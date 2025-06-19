@@ -5,7 +5,7 @@ dotenv.config();
 import { Command } from 'commander';
 import { SelectTokenCommand } from './commands/SelectTokenCommand';
 import { SelectTargetChainCommand } from './commands/SelectTargetChainCommand';
-import { LockCommand } from './commands/LockCommand';
+import { LockTokenCommand } from './commands/LockTokenCommand';
 import { ClaimWrappedCommand } from './commands/ClaimWrappedCommand';
 import { ClaimOriginCommand } from './commands/ClaimOriginCommand';
 import { BurnTokenCommand } from './commands/BurnTokenCommand';
@@ -41,7 +41,7 @@ program
   .command('lock')
   .description('Lock tokens for bridging')
   .action(async () => {
-    const command = new LockCommand();
+    const command = new LockTokenCommand();
     await command.execute();
   });
 

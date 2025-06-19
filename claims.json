@@ -5,41 +5,11 @@
       {
         "user": "0xf8F0F5c8C3FdC3213C7bf6E4140257F8F09d22A9",
         "token": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-        "amount": "500000",
-        "nonce": "1750255967811",
+        "amount": "7",
+        "nonce": "1750309103140",
         "sourceChainId": "84532",
-        "signature": "0x74654eaf40299f69ab709f21def875871bb717eb808b5405cc17faa984fc203e60a860b68ed03664af8830bcf18560ad0ab54462aabb180fcf89ac7f7d654fbe1c",
-        "claimed": false,
-        "claimType": "lock"
-      },
-      {
-        "user": "0xf8F0F5c8C3FdC3213C7bf6E4140257F8F09d22A9",
-        "token": "0x0000000000000000000000000000000000000000",
-        "amount": "5000000000000",
-        "nonce": "1750258441807",
-        "sourceChainId": "84532",
-        "signature": "0x64a412dcc5977470bb3344e7d98dbb8b702a4441efc5381bc43dd117d6d440ca07732c2d5192e0e2247f546893bc17ea82e700f2ed7d7b0773bdcee493e53f6b1b",
-        "claimed": false,
-        "claimType": "lock"
-      },
-      {
-        "user": "0xf8F0F5c8C3FdC3213C7bf6E4140257F8F09d22A9",
-        "token": "0x0000000000000000000000000000000000000000",
-        "amount": "60000000000",
-        "nonce": "1750258710468",
-        "sourceChainId": "84532",
-        "signature": "0x3854cdcd8d367d21ee653786f15e13e2bf0221481146aa8333f4ce8f78af1667554788a5bc5382560ce9a20323e6d9d33cf4ab8705ae2c4befda4e82d52a71821c",
-        "claimed": false,
-        "claimType": "lock"
-      },
-      {
-        "user": "0xf8F0F5c8C3FdC3213C7bf6E4140257F8F09d22A9",
-        "token": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-        "amount": "500",
-        "nonce": "1750260235356",
-        "sourceChainId": "84532",
-        "signature": "0xa6bf666c00cdb6cf516ee20401ec18a79cf9bed370690886b9830af2bacbd6bd66bcd52dd660301fc8bcd879823adb1364a66ae7086d1eb01253a1cfdcb166ed1b",
-        "claimed": false,
+        "signature": "0xbd746278b291e8757356038fe09c6c49558dbae63bf0af93307e3cdf356a0ea61256816e49408048e91ff3b90a48c58401237885f778011e19247837172d2a8d1c",
+        "claimed": true,
         "claimType": "lock"
       }
     ]

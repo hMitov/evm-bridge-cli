@@ -14,7 +14,7 @@ function getProviderAndWallet() {
   return { provider, wallet, currentNetwork };
 }
 
-export class LockCommand extends BaseCommand {
+export class LockTokenCommand extends BaseCommand {
   
   protected async action(): Promise<void> {
     const config = cliConfigManager.getCliConfig();
@@ -55,6 +55,7 @@ export class LockCommand extends BaseCommand {
       const { wallet } = getProviderAndWallet();
       const tokenContract = new Contract(tokenAddress, werc20Abi.abi, wallet.provider);
       const decimals = await tokenContract.decimals();
+      console.log("Decimals: ", decimals);
 
       const amountWei = ethers.parseUnits(amount, decimals);
 
