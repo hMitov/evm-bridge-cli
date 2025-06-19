@@ -5,20 +5,20 @@
       {
         "user": "0xf8F0F5c8C3FdC3213C7bf6E4140257F8F09d22A9",
         "token": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-        "amount": "50",
-        "nonce": "1750319329949",
+        "amount": "40",
+        "nonce": "1750341913483",
         "sourceChainId": "84532",
-        "signature": "0x70dd32bc4c45b4cef7ee666bd98911110e97872f68988e621f1ec95a4a3fbe6914061a5370d2ce67dc1f4a58278d1d93db1ac27c27fbb58ff7274b568d49be4d1b",
-        "claimed": true,
+        "signature": "0xb65efaa5cfa5966105746e330262b020cde67cce801ca10beac35771aff1347375f5774f497134689d474bf4ac6bb10da1ecf628bb1858c27fe7a1bd6fefec581c",
+        "claimed": false,
         "claimType": "lock"
       },
       {
         "user": "0xf8F0F5c8C3FdC3213C7bf6E4140257F8F09d22A9",
-        "token": "0xBa68409f52144E8a37F6796a833CeaCF2f0C1EcB",
+        "token": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
         "amount": "10",
-        "nonce": "1750320009252",
-        "sourceChainId": "11155111",
-        "signature": "0x477e7f067142e2efc4bf25b04dc20594e09c10feb40482de9b68311125db33576ee41649c06985b1cd8d3460d22ac89f7e5329763a95020c9a8ff78001ce137d1c",
+        "nonce": "1750342003125",
+        "sourceChainId": "84532",
+        "signature": "0xc7e4a9363f5bd14706f525aca54e63f4f57eb68e9aae9e166668a59b6e7fea4d1fd9eae2b251c978c2e6f94db8baa23f00669e009de8354bc129b2761b03244a1b",
         "claimed": false,
         "claimType": "burn"
       }

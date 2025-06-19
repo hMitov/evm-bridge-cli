@@ -216,7 +216,7 @@ export const claimToken = async (
   tokenAddress: string,
   amount: number,
   nonce: number,
-  sourceChainId: number,
+  chainId: number,
   signature: string,
   becomeWrapped: boolean
 ): Promise<ContractTransactionResponse> => {
@@ -225,33 +225,40 @@ export const claimToken = async (
   console.log("Token Address:", tokenAddress);
   console.log("Amount:", amount);
   console.log("Nonce:", nonce);
-  console.log("Source Chain ID:", sourceChainId);
+  console.log("Target Chain ID:", chainId);
   console.log("Signature:", signature);
 
-  const targetChainId = cliConfigManager.getCliConfig().targetChainId!;
-  const targetNetwork = getNetworkByChainId(targetChainId);
-  const provider = new ethers.WebSocketProvider(targetNetwork.wsUrl);
-  const wallet = new ethers.Wallet(USER_PRIVATE_KEY, provider);
-
-
-  const bridgeFactory = new Contract(targetNetwork.bridgeFactoryAddress, bridgeFactoryAbi.abi, wallet);
 
   if (becomeWrapped) {
+    const targetChainId = cliConfigManager.getCliConfig().targetChainId!;
+    const targetNetwork = getNetworkByChainId(targetChainId);
+    const provider = new ethers.WebSocketProvider(targetNetwork.wsUrl);
+    const wallet = new ethers.Wallet(USER_PRIVATE_KEY, provider);
+  
+  
+    const bridgeFactory = new Contract(targetNetwork.bridgeFactoryAddress, bridgeFactoryAbi.abi, wallet);
     return bridgeFactory.claimWrappedWithSignature(
       userAddress,
       tokenAddress,
       amount,
       nonce,
-      sourceChainId,
+      chainId,
       signature
     );
   } else {
+    console.log("Blockchain.ts: Claiming original chain: " + chainId);
+    const targetNetwork = getNetworkByChainId(chainId);
+    const provider = new ethers.WebSocketProvider(targetNetwork.wsUrl);
+    const wallet = new ethers.Wallet(USER_PRIVATE_KEY, provider);
+  
+  
+    const bridgeFactory = new Contract(targetNetwork.bridgeFactoryAddress, bridgeFactoryAbi.abi, wallet);
     console.log("Claiming original token");
     console.log("User Address:", userAddress);
     console.log("Token Address:", tokenAddress);
     console.log("Amount:", amount);
     console.log("Nonce:", nonce);
-    console.log("Source Chain ID:", sourceChainId);
+    console.log("Source Chain ID:", chainId);
     console.log("Signature:", signature);
 
     return bridgeFactory.claimOriginalWithSignature(
@@ -259,7 +266,7 @@ export const claimToken = async (
       tokenAddress,
       amount,
       nonce,
-      sourceChainId,
+      chainId,
       signature
     );
   }

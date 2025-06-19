@@ -32,7 +32,7 @@ export class LockTokenCommand extends BaseCommand {
     // const decimals = await usdcContract.decimals();
     // console.log("Decimals: ", decimals);
 
-    const tokenAddress = config.selectedToken;
+    const tokenAddress = config.originalToken;
     if (!tokenAddress) {
       throw new Error('No token selected. Please run `select-token` first.');
     }

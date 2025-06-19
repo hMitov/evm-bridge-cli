@@ -40,5 +40,5 @@ export interface PermitData {
 export interface CLIConfig {
   currentNetwork: NetworkConfig
   targetChainId?: number;
-  selectedToken?: string;
+  originalToken?: string;
 }

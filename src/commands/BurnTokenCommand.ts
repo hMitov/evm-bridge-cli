@@ -25,8 +25,23 @@ export class BurnTokenCommand extends BaseCommand {
         validate: this.validateAddress,
       },
     ]);
+
+    const { burnWrappedNativeTokens } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'burnWrappedNativeTokens',
+        message: 'Do you want to burn wrapped native tokens?',
+        default: false,
+      },
+    ]);
     
-    const originalTokenAddress = config.selectedToken;
+    
+    let originalTokenAddress;
+    if(burnWrappedNativeTokens) {
+      originalTokenAddress = "0x0000000000000000000000000000000000000000";
+    } else {
+      originalTokenAddress = config.originalToken;
+    }
     const originalChainId = config.currentNetwork.chainId;  // This is the chain where we want to receive the original token
     
     // Prompt for amount

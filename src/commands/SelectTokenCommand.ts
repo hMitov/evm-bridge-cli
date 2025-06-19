@@ -43,7 +43,7 @@ export class SelectTokenCommand extends BaseCommand {
       console.log(`Your Balance: ${tokenInfo.balance}`);
       console.log(`Address: ${tokenInfo.address}`);
 
-      cliConfig.selectedToken = tokenAddress;
+      cliConfig.originalToken = tokenAddress;
       cliConfigManager.saveCliConfig(cliConfig);
     } catch (error) {
       console.error('Error fetching token information:', error instanceof Error ? error.message : 'Unknown error');

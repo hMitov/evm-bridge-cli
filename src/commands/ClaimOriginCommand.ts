@@ -20,34 +20,61 @@ function getProviderAndWallet() {
 
 export class ClaimOriginCommand extends BaseCommand {
     protected async action(): Promise<void> {
+
+      const { claimNative } = await inquirer.prompt([
+        {
+          type: 'confirm',
+          name: 'claimNative',
+          message: 'Do you want to claim native?',
+          default: false,
+        },
+      ]);
+
+      let originalToken;
+      if(claimNative) {
+        originalToken = "0x0000000000000000000000000000000000000000";
+      } else {
+        originalToken = cliConfigManager.getCliConfig().originalToken;
+      }
+
         const { wallet } = getProviderAndWallet();
         const userAddress = wallet.address.toLowerCase();
       
     
-        const claim: SignedClaim | null = await claimsManager.getNextClaimedClaim(userAddress, 'lock');
+        const claim: SignedClaim | null = await claimsManager.getNextUnclaimedClaim(userAddress, 'burn');
         console.log('DEBUG: claim', claim);
     
         if (!claim) {
           console.log('No unclaimed claims found');
           return;
         }
+
+
     
-        const { user, token, amount, sourceChainId, signature } = claim;
+        const { user, amount, nonce, signature } = claim;
+
+        
+        const targetChainId = cliConfigManager.getCliConfig().currentNetwork.chainId;
+        console.log("Claiming original token");
+        console.log("User Address:", user);
+        console.log("Original Token Address:", originalToken);
+        console.log("Amount:", amount);
+        console.log("Target Chain ID:", targetChainId);
+        console.log("Signature:", signature);
     
         // const amountFormatted = ethers.formatUnits(amount, 18); // Adjust decimals dynamically if needed
     
         // console.log(`Claiming tokens for amount: ${amountFormatted}, nonce: ${nonce}, sourceChainId: ${sourceChainId}`);
-        const nonce = Date.now();
 
         try {
           console.log('\nClaiming tokens...');
     
           const tx = await claimToken(
             user,
-            token,
+            originalToken!,
             Number(amount),
             Number(nonce),
-            Number(sourceChainId),
+            Number(targetChainId),
             signature,
             false
           );
@@ -68,9 +95,9 @@ export class ClaimOriginCommand extends BaseCommand {
             to: tx.to,
             gasUsed: receipt?.gasUsed?.toString(),
             user,
-            token,
+            originalToken,
             amount,
-            chainId: getNetworkByChainId(Number(sourceChainId)).chainId,
+            chainId: getNetworkByChainId(Number(targetChainId)).chainId,
           });
         //   await claimsManager.markClaimAsClaimed(userAddress, nonce);
         } catch (error) {

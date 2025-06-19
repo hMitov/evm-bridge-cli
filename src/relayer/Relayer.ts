@@ -2,7 +2,7 @@ import { ethers, Contract, Wallet, WebSocketProvider, EventLog } from 'ethers';
 import * as bridgeFactoryAbi from '../contracts/abis/BridgeFactory.json';
 import { cliConfigManager } from '../config/cliConfig';
 import { RELAYER_PRIVATE_KEY } from '../config/config';
-import { NetworkConfig } from '../types';
+import { CLIConfig, NetworkConfig } from '../types';
 import * as fs from 'fs';
 import * as path from 'path';
 import { claimsManager, SignedClaim } from './claimsManager';
@@ -81,11 +81,11 @@ export class Relayer {
       }
 
       // Block event logging every 10 blocks
-      this.provider.on('block', (blockNumber) => {
-        if (blockNumber % 10 === 0) {
-          this.log(`[Relayer] Connected at block ${blockNumber}`);
-        }
-      });
+      // this.provider.on('block', (blockNumber) => {
+      //   if (blockNumber % 10 === 0) {
+      //     this.log(`[Relayer] Connected at block ${blockNumber}`);
+      //   }
+      // });
 
       this.attachListeners();
       this.log(`[Relayer] Connected to network: ${currentNetwork.wsUrl}`);
@@ -104,7 +104,7 @@ export class Relayer {
       this.log(`[Relayer] TokenLocked event detected:\n${JSON.stringify(this.serializeBigInts(event.args), null, 2)}`);
 
       try {
-        const claim = await this.buildAndSignClaim(event);
+        const claim = await this.buildAndSignClaim(event, 'lock');
         claim.claimType = 'lock';
         await claimsManager.addClaim(claim);
         this.log('[Relayer] Claim added to ClaimsManager');
@@ -119,7 +119,7 @@ export class Relayer {
       this.log(`[Relayer] NativeLocked event detected:\n${JSON.stringify(this.serializeBigInts(event.args), null, 2)}`);
 
       try {
-        const claim = await this.buildAndSignClaim(event);
+        const claim = await this.buildAndSignClaim(event, 'lock');
         claim.claimType = 'lock';
         await claimsManager.addClaim(claim);
         this.log('[Relayer] Claim added to ClaimsManager');
@@ -134,7 +134,7 @@ export class Relayer {
       this.log(`[Relayer] TokenBurned event detected:\n${JSON.stringify(this.serializeBigInts(event.args), null, 2)}`);
     
       try {
-        const claim = await this.buildAndSignClaim(event);
+        const claim = await this.buildAndSignClaim(event, 'burn');
         claim.claimType = 'burn';
         await claimsManager.addClaim(claim);
         this.log('[Relayer] Claim added to ClaimsManager from TokenBurned');
@@ -158,74 +158,119 @@ export class Relayer {
   /**
    * Signs the claim for TokenLocked, NativeLocked, or TokenBurned event
    */
-  private async buildAndSignClaim(event: EventLog): Promise<SignedClaim> {
+  private async buildAndSignClaim(event: EventLog, claimType: 'lock' | 'burn'): Promise<SignedClaim> {
     const safeArgs = this.serializeBigInts(event.args);
     this.log('[Relayer] Event args: ' + JSON.stringify(safeArgs));
 
-    let user, token, amount, targetChainId, nonce;
-    if (event.eventName === 'TokenLocked') {
-      ({ user, token, amount, targetChainId, nonce } = event.args);
-    } else if (event.eventName === 'NativeLocked') {
-      [user, amount, targetChainId, nonce] = event.args;
-      token = '0x0000000000000000000000000000000000000000';
-    } else if (event.eventName === 'TokenBurned') {
-      [user, token, amount, targetChainId, nonce] = event.args;
-    } else {
-      throw new Error(`Unsupported event type: ${event.eventName}`);
-    }
-    
-    // Debug logging for each parameter
-    this.log(`[Relayer] Extracted parameters:`);
-    this.log(`  user: ${user}`);
-    this.log(`  token: ${token}`);
-    this.log(`  amount: ${amount}`);
-    this.log(`  targetChainId: ${targetChainId}`);
-    this.log(`  nonce: ${nonce}`);
-    
-    if (!user || !token || !amount || !targetChainId || !nonce) {
-      this.log('[Relayer] ERROR: Missing event argument: ' + JSON.stringify(safeArgs));
-      throw new Error('Missing event argument in event');
-    }
-    const targetBridgeFactoryAddress = getNetworkByChainId(targetChainId).bridgeFactoryAddress;
-    console.log("targetBridgeFactoryAddress", targetBridgeFactoryAddress);
+    let targetBridgeFactoryAddress: string | null = null;
+    let packed: string | null = null;
+    let user, token, amount, targetChainId, sourceChainId, nonce;
+    if (claimType === 'lock') {
+      if (event.eventName === 'TokenLocked') {
+        ({ user, token, amount, targetChainId, nonce } = event.args);
+      } else if (event.eventName === 'NativeLocked') {
+        [user, amount, targetChainId, nonce] = event.args;
+        token = '0x0000000000000000000000000000000000000000';
+      } else if (event.eventName === 'TokenBurned') {
+        [user, token, amount, targetChainId, nonce] = event.args;
+      } else {
+        throw new Error(`Unsupported event type: ${event.eventName}`);
+      }
 
-    this.log('[Relayer] Signing claim with params: ' + JSON.stringify({
-      user,
-      token,
-      amount: amount.toString(),
-      nonce: nonce.toString(),
-      sourceChainId: this.networkConfig.chainId,
-      targetBridgeFactoryAddress
-    }, null, 2));
+      if (!user || !token || !amount || !targetChainId || !nonce) {
+        this.log('[Relayer] ERROR: Missing event argument: ' + JSON.stringify(safeArgs));
+        throw new Error('Missing event argument in event');
+      }
 
-    // When hashing, keep BigInts, do NOT convert to strings here!
-    const packed = ethers.solidityPacked(
-      ['address', 'address', 'uint256', 'uint256', 'uint256', 'address'],
-      [
+      targetBridgeFactoryAddress = getNetworkByChainId(targetChainId).bridgeFactoryAddress;
+      packed = ethers.solidityPacked(
+        ['address', 'address', 'uint256', 'uint256', 'uint256', 'address'],
+        [
+          user,
+          token === '0x0000000000000000000000000000000000000000' ? '0x0000000000000000000000000000000000000000' : token,
+          amount,
+          nonce,
+          this.networkConfig.chainId,
+          targetBridgeFactoryAddress
+        ]
+      );
+
+      const hash = ethers.keccak256(packed!);
+      this.log('[Relayer] Hash to sign: ' + hash);
+  
+      const signature = await this.wallet.signMessage(ethers.getBytes(hash));
+      this.log('[Relayer] Signature: ' + signature);
+  
+      return {
         user,
-        token === '0x0000000000000000000000000000000000000000' ? '0x0000000000000000000000000000000000000000' : token,
-        amount,
-        nonce,
-        this.networkConfig.chainId,
-        targetBridgeFactoryAddress
-      ]
-    );
+        token,
+        amount: amount.toString(),
+        nonce: nonce.toString(),
+        sourceChainId: this.networkConfig.chainId.toString(),
+        signature,
+        claimed: false
+      };
 
-    const hash = ethers.keccak256(packed);
-    this.log('[Relayer] Hash to sign: ' + hash);
 
-    const signature = await this.wallet.signMessage(ethers.getBytes(hash));
-    this.log('[Relayer] Signature: ' + signature);
 
-    return {
-      user,
-      token,
-      amount: amount.toString(),
-      nonce: nonce.toString(),
-      sourceChainId: this.networkConfig.chainId.toString(),
-      signature,
-      claimed: false
-    };
+    } else if (claimType === 'burn') {
+      let originalToken, originalChainId;
+      if (event.eventName === 'TokenBurned') {
+        [user, token, originalToken, amount, originalChainId, nonce] = event.args;
+      } else {
+        throw new Error(`Unsupported event type: ${event.eventName}`);
+      }
+
+      if (!user || !token || !originalToken || !amount || !originalChainId || !nonce) {
+        this.log('[Relayer] ERROR: Missing event argument: ' + JSON.stringify(safeArgs));
+        throw new Error('Missing event argument in event');
+      }
+
+      this.log(`[Relayer] TokenBurned event details:`);
+      this.log(`  User: ${user}`);
+      this.log(`  Wrapped Token: ${token}`);
+      this.log(`  Original Token: ${originalToken}`);
+      this.log(`  Amount: ${amount}`);
+      this.log(`  Original Chain ID: ${originalChainId}`);
+      this.log(`  Nonce: ${nonce}`);
+      this.log(`  Current Network Chain ID: ${this.networkConfig.chainId}`);
+
+      const cliConfig = cliConfigManager.getCliConfig();
+      targetBridgeFactoryAddress = getNetworkByChainId(originalChainId).bridgeFactoryAddress;
+      this.log(`[Relayer] Target Bridge Factory Address: ${targetBridgeFactoryAddress}`);
+      
+      token = originalToken;
+      
+      packed = ethers.solidityPacked(
+        ['address', 'address', 'uint256', 'uint256', 'uint256', 'address'],
+        [
+          user,
+          token,
+          amount,
+          nonce,
+          originalChainId,
+          targetBridgeFactoryAddress
+        ]
+      );
+
+      const hash = ethers.keccak256(packed!);
+      this.log('[Relayer] Hash to sign: ' + hash);
+  
+      const signature = await this.wallet.signMessage(ethers.getBytes(hash));
+      this.log('[Relayer] Signature: ' + signature);
+  
+      return {
+        user,
+        token,
+        amount: amount.toString(),
+        nonce: nonce.toString(),
+        sourceChainId: cliConfig.currentNetwork.chainId.toString(),
+        signature,
+        claimed: false
+      };
+    }
+
+    throw new Error('Invalid claim type');
   }
 
   private reconnect() {
