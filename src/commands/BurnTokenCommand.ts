@@ -2,11 +2,12 @@ import { Contract, ethers } from 'ethers';
 import { BaseCommand } from './BaseCommand';
 import { burnToken } from '../utils/blockchain';
 import { cliConfigManager } from '../config/cliConfig';
-import { USER_PRIVATE_KEY } from '../config/config';
+import { USER_PRIVATE_KEY } from '../config/configLoader';
 import inquirer from 'inquirer';
-import { getNetworkByChainId } from '../config/networks';
 import * as werc20Abi from '../contracts/abis/WERC20.json';
 import { TxLogger } from '../utils/txLogger';
+import { getNetworkConfigByChainId } from '../config/networks';
+import { NetworkConfig } from '../types';
 
 export class BurnTokenCommand extends BaseCommand {
   private validateAddress(input: string): boolean | string {
@@ -16,8 +17,9 @@ export class BurnTokenCommand extends BaseCommand {
   protected async action(): Promise<void> {
     const config = cliConfigManager.getCliConfig();
 
-    // Pull these from your config or environment
-    const { wrappedTokenAddress } = await inquirer.prompt([
+    const { wrappedTokenAddress } = await inquirer.prompt<{ 
+      wrappedTokenAddress: string 
+    }>([
       {
         type: 'input',
         name: 'wrappedTokenAddress',
@@ -26,7 +28,9 @@ export class BurnTokenCommand extends BaseCommand {
       },
     ]);
 
-    const { burnWrappedNativeTokens } = await inquirer.prompt([
+    const { burnWrappedNativeTokens } = await inquirer.prompt<{ 
+      burnWrappedNativeTokens: boolean 
+    }>([
       {
         type: 'confirm',
         name: 'burnWrappedNativeTokens',
@@ -36,94 +40,88 @@ export class BurnTokenCommand extends BaseCommand {
     ]);
     
     
-    let originalTokenAddress;
-    if(burnWrappedNativeTokens) {
-      originalTokenAddress = "0x0000000000000000000000000000000000000000";
-    } else {
-      originalTokenAddress = config.originalToken;
-    }
-    const originalChainId = config.currentNetwork.chainId;  // This is the chain where we want to receive the original token
+    const originalTokenAddress = burnWrappedNativeTokens
+      ? ethers.ZeroAddress
+      : config.originalToken;
     
-    // Prompt for amount
-    const { amount } = await inquirer.prompt([
+    if (!originalTokenAddress) {
+      throw new Error('Original token address not found in config. Please run `select-token`.');
+    }
+
+    const originalChainId = config.currentNetwork.chainId;
+
+    if (!originalChainId) {
+      throw new Error('Original chain ID missing from config.');
+    }
+
+    const { amount } = await inquirer.prompt<{ 
+      amount: string 
+    }>([
       {
         type: 'input',
         name: 'amount',
         message: 'Enter amount to return:',
-        validate: (input: string) => {
+        validate: (input: string): boolean | string => {
           const val = Number(input);
-          if (isNaN(val) || val <= 0) {
-            return 'Please enter a valid positive number';
-          }
-          return true;
-        }
-      }
+          return val > 0 && !isNaN(val) ? true : 'Please enter a valid positive number';
+        },
+      },
     ]);
 
-    console.log("\nTransaction Details:");
-    console.log("-------------------");
-    console.log("Current Network (where wrapped token exists):", config.currentNetwork.name);
-    console.log("Current Chain ID:", config.currentNetwork.chainId);
-    console.log("Original Network (where original token will be received):", getNetworkByChainId(originalChainId!).name);
-    console.log("Original Chain ID:", originalChainId);
-    console.log("Wrapped Token Address:", wrappedTokenAddress);
-    console.log("Original Token Address:", originalTokenAddress);
-    console.log("Amount to Return:", amount);
+    const targetNetwork: NetworkConfig | undefined = getNetworkConfigByChainId(config.targetChainId!);
+    if (!targetNetwork) {
+      throw new Error('Target network not found in config. Please run `select-target-chain`.');
+    }      
 
+    const provider = new ethers.WebSocketProvider(targetNetwork.wsUrl);
+    const wallet = new ethers.Wallet(USER_PRIVATE_KEY, provider);
+    
     try {
-      // Get provider and wallet for the network where we need to burn the wrapped tokens (Sepolia)
-      const targetNetwork = getNetworkByChainId(config.targetChainId!);
-      console.log("Target Network: ", targetNetwork);
-      const provider = new ethers.WebSocketProvider(targetNetwork.wsUrl);
-      const wallet = new ethers.Wallet(USER_PRIVATE_KEY, provider);
-
-      // First check if the contract exists
       const code = await provider.getCode(wrappedTokenAddress);
       if (code === '0x') {
         throw new Error('No contract found at the specified address');
       }
 
-      // Try to get the decimals directly from the contract
-      const tokenContract = new Contract(
-        wrappedTokenAddress,
-        werc20Abi.abi,
-        wallet.provider
-      );
+      const tokenContract = new Contract(wrappedTokenAddress, werc20Abi.abi, wallet.provider);
 
       const balance = await tokenContract.balanceOf(wallet.address);
-      console.log("Balance:", balance.toString());
+      const decimals = await tokenContract.decimals();
 
-        const decimals = await tokenContract.decimals();
-        console.log("Decimals: ", decimals);
-        const amountWei = ethers.parseUnits(amount, decimals);
+      console.log(`Balance: ${ethers.formatUnits(balance, decimals)}`);
+      console.log(`Decimals: ${decimals}`);
 
-        console.log(`\nBurning ${amount} wrapped tokens on Sepolia (${amountWei.toString()} wei) to return to Base...`);
+      const amountWei = ethers.parseUnits(amount, decimals);
 
-        const tx = await burnToken(
-          wrappedTokenAddress,
-          originalTokenAddress!,
-          amountWei,
-          originalChainId,
-          wallet,
-        );
+      if (amountWei > balance) {
+        throw new Error('Entered amount exceeds wallet balance.');
+      }
 
-        const receipt = await tx.wait();
-        console.log(`Transaction confirmed in block ${receipt?.blockNumber}`);
-        console.log(`Gas used: ${receipt?.gasUsed.toString()}`);
+      console.log(`\nBurning ${amount} wrapped tokens on Sepolia (${amountWei.toString()} wei) to return to Base...`);
+
+      const tx = await burnToken(
+        wrappedTokenAddress,
+        originalTokenAddress!,
+        amountWei,
+        originalChainId,
+        wallet,
+      );
+
+      const receipt = await tx.wait();
+
+      console.log(`Transaction confirmed in block ${receipt?.blockNumber}`);
         
-        // Log transaction to common file
-        TxLogger.logTransaction({
-          command: 'burn',
-          hash: tx.hash,
-          blockNumber: receipt?.blockNumber,
-          from: tx.from,
-          to: tx.to,
-          gasUsed: receipt?.gasUsed?.toString(),
-          wrappedTokenAddress,
-          originalTokenAddress,
-          amount: amountWei.toString(),
-          chainId: Number(originalChainId),
-        });
+      TxLogger.logTransaction({
+        command: 'burn',
+        hash: tx.hash,
+        blockNumber: receipt?.blockNumber,
+        from: tx.from,
+        to: tx.to,
+        gasUsed: receipt?.gasUsed?.toString(),
+        wrappedTokenAddress,
+        originalTokenAddress,
+        amount: amountWei.toString(),
+        chainId: originalChainId.toString(),
+      });
 
     } catch (error) {
       console.error('Error returning tokens:', error instanceof Error ? error.message : error);

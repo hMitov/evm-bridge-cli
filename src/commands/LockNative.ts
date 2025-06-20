@@ -1,12 +1,9 @@
 import inquirer from 'inquirer';
-import { ethers, Contract } from 'ethers';
+import { ethers } from 'ethers';
 import { BaseCommand } from './BaseCommand';
 import { cliConfigManager } from '../config/cliConfig';
-import { lockNative, lockToken } from '../utils/blockchain';  // <- import your blockchain helper
-import { USER_PRIVATE_KEY } from '../config/config';
-import werc20Abi from '../contracts/abis/WERC20.json';
-import fs from 'fs';
-import path from 'path';
+import { lockNative } from '../utils/blockchain';
+import { USER_PRIVATE_KEY } from '../config/configLoader';
 import { TxLogger } from '../utils/txLogger';
 
 function getProviderAndWallet() {
@@ -16,15 +13,18 @@ function getProviderAndWallet() {
     return { provider, wallet, currentNetwork };
 }
 
-
 export class LockNativeCommand extends BaseCommand {
 
   protected async action(): Promise<void> {
     const config = cliConfigManager.getCliConfig();
 
-    if (!config.targetChainId) throw new Error('No target chain selected.');
+    if (!config.targetChainId) {
+      throw new Error('No target chain selected.');
+    }
 
-    const { amount } = await inquirer.prompt([
+    const { amount } = await inquirer.prompt<{ 
+      amount: string 
+    }>([ 
       {
         type: 'input',
         name: 'amount',
@@ -33,21 +33,25 @@ export class LockNativeCommand extends BaseCommand {
           const val = Number(input);
           if (isNaN(val) || val <= 0) return 'Enter a positive number';
           return true;
-        }
-      }
+        },
+      },
     ]);
+
+    const { provider } = getProviderAndWallet();
 
     try {
       const amountWei = ethers.parseEther(amount);
 
+      console.log(`\nLocking ${amount} native ETH (${amountWei.toString()} wei) to chain ID ${config.targetChainId}...`);
+
       const tx = await lockNative(amountWei, config.targetChainId);
-      console.log("Transaction sent:", tx);
-
+      
       console.log(`Transaction sent: ${tx.hash}`);
+      
       const receipt = await tx.wait();
-      console.log(`Transaction confirmed in block ${receipt?.blockNumber ?? 'unknown'}, gas used: ${receipt?.gasUsed?.toString() ?? 'unknown'}`);
+      
+      console.log(`Transaction confirmed in block ${receipt?.blockNumber}`);
 
-      // Log transaction to common file
       TxLogger.logTransaction({
         command: 'lockNative',
         hash: tx.hash,

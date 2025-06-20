@@ -1,14 +1,17 @@
 import inquirer from 'inquirer';
 import { BaseCommand } from './BaseCommand';
-import { getNetworkList } from '../config/networks';
+import { getNetworkConfigList } from '../config/networks';
 import { cliConfigManager } from '../config/cliConfig';
+import { NetworkConfig } from '../types';
 
 export class SelectTargetChainCommand extends BaseCommand {
   protected async action(): Promise<void> {
     const cliConfig = cliConfigManager.getCliConfig();
-    const currentChainId = cliConfig.currentNetwork.chainId;
+    const currentChainId: number = cliConfig.currentNetwork.chainId;
 
-    const availableNetworks = getNetworkList().filter(net => net.chainId !== currentChainId);
+    const availableNetworks: NetworkConfig[] = getNetworkConfigList().filter(
+      net => net.chainId !== currentChainId
+    );
 
     if (availableNetworks.length === 0) {
       console.log('No other networks available for bridging.');
@@ -16,20 +19,26 @@ export class SelectTargetChainCommand extends BaseCommand {
     }
 
     try {
-      const { targetChainId } = await inquirer.prompt([
+      const { targetChainId }: { targetChainId: number } = await inquirer.prompt([
         {
           type: 'list',
           name: 'targetChainId',
           message: 'Select target chain:',
-          choices: availableNetworks.map(net => ({ name: net.name, value: net.chainId }))
-        }
+          choices: availableNetworks.map(net => ({ 
+            name: net.name,
+            value: net.chainId 
+          })),
+        },
       ]);
 
-      cliConfig.targetChainId = targetChainId;
-      cliConfigManager.saveCliConfig(cliConfig);
+      const updatedConfig = {
+        ...cliConfig,
+        targetChainId,
+      };
+      cliConfigManager.saveCliConfig(updatedConfig);
 
-      const selectedNetwork = availableNetworks.find(n => n.chainId === targetChainId);
-      console.log(`\nSelected target chain: ${selectedNetwork ? selectedNetwork.name : 'Unknown'}`);
+      const selectedNetwork = availableNetworks.find((n) => n.chainId === targetChainId);
+      console.log(`\nSelected target chain: ${selectedNetwork?.name ?? 'Unknown'}`);
     } catch (error) {
       console.error('Error selecting target chain:', error instanceof Error ? error.message : 'Unknown error');
       throw error;

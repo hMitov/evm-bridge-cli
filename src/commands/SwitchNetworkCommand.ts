@@ -1,38 +1,43 @@
 import { cliConfigManager } from '../config/cliConfig';
 import inquirer from 'inquirer';
-import { getNetworkByChainId, getNetworkList } from '../config/networks';
+import { getNetworkConfigByChainId, getNetworkConfigList } from '../config/networks';
 import { BaseCommand } from './BaseCommand';
-import { CLIConfig } from '../types';
+import { CLIConfig, NetworkConfig } from '../types';
 
 export class SwitchNetworkCommand extends BaseCommand {
   protected async action(): Promise<void> {
-    const availableNetworks = getNetworkList();
+    const availableNetworks: NetworkConfig[] = getNetworkConfigList();
 
-    const { chainId } = await inquirer.prompt([
+    if (availableNetworks.length === 0) {
+      console.error('No available networks configured.');
+      return;
+    }
+
+    const { chainId } = await inquirer.prompt<{ chainId: number }>([
       {
         type: 'list',
         name: 'chainId',
         message: 'Select network to switch to:',
-        choices: availableNetworks.map(net => ({
+        choices: availableNetworks.map((net) => ({
           name: `${net.name} (chainId: ${net.chainId})`,
           value: net.chainId,
         })),
       },
     ]);
 
-    const selectedNetwork = getNetworkByChainId(chainId);
+    const selectedNetwork: NetworkConfig = getNetworkConfigByChainId(chainId);
     if (!selectedNetwork) {
       console.error(`Network with chainId ${chainId} not found.`);
       return;
     }
 
-    const currentConfig = cliConfigManager.getCliConfig();
+    const currentConfig: CLIConfig = cliConfigManager.getCliConfig();
+
     if (chainId === currentConfig.currentNetwork.chainId) {
       console.log(`Already connected to ${currentConfig.currentNetwork.name}`);
       return;
     }
 
-    // Update and save config
     const updatedConfig: CLIConfig = {
       ...currentConfig,
       currentNetwork: selectedNetwork,

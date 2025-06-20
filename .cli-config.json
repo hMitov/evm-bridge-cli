@@ -1,11 +1,11 @@
 {
   "currentNetwork": {
-    "name": "Base",
-    "chainId": 84532,
-    "wsUrl": "wss://base-sepolia.infura.io/ws/v3/d3238ad56c6e4425b22d8734d680a5ed",
-    "bridgeFactoryAddress": "0xCa90F24e6fabD69a970f748DC4b13d3afD18AfAf",
-    "explorerUrl": "https://basescan.org"
+    "name": "Sepolia",
+    "chainId": 11155111,
+    "wsUrl": "wss://ethereum-sepolia-rpc.publicnode.com",
+    "bridgeFactoryAddress": "0x1FAF0A82c15E92b7C5687FB7FE459e77d7AD3622",
+    "explorerUrl": "https://sepolia.etherscan.io"
   },
   "originalToken": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-  "targetChainId": 11155111
+  "targetChainId": 84532
 }

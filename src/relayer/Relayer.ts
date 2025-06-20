@@ -1,12 +1,11 @@
 import { ethers, Contract, Wallet, WebSocketProvider, EventLog } from 'ethers';
 import * as bridgeFactoryAbi from '../contracts/abis/BridgeFactory.json';
-import { cliConfigManager } from '../config/cliConfig';
-import { RELAYER_PRIVATE_KEY } from '../config/config';
-import { CLIConfig, NetworkConfig } from '../types';
+import { RELAYER_PRIVATE_KEY } from '../config/configLoader';
+import { NetworkConfig } from '../types';
 import * as fs from 'fs';
 import * as path from 'path';
 import { claimsManager, SignedClaim } from './claimsManager';
-import { getNetworkByChainId } from '../config/networks';
+import { getNetworkConfigByChainId } from '../config/networks';
 
 export class Relayer {
   private provider!: WebSocketProvider;
@@ -21,16 +20,21 @@ export class Relayer {
 
   constructor(networkConfig: NetworkConfig) {
     this.networkConfig = networkConfig;
-    this.logStream = fs.createWriteStream(path.join(process.cwd(), `relayer-${networkConfig.chainId}.log`), { flags: 'a' });
-    this.initialize();
+    this.logStream = fs.createWriteStream(
+      path.join(process.cwd(), `relayer-${networkConfig.chainId}.log`),
+      { flags: 'a' }
+    );
+    this.initialize().catch((err) => {
+      this.log(`[Relayer] Initialization error: ${err instanceof Error ? err.message : err}`);
+      console.error(err);
+    });
   }
 
   private async initialize() {
     this.log('[Relayer] Initializing...');
-    await claimsManager.loadFromDisk();
+    await claimsManager.loadFromFile();
     this.log('[Relayer] Claims loaded from disk');
     await this.connect();
-    // this.watchConfigChanges();
   }
 
   private log(message: string) {
@@ -40,7 +44,6 @@ export class Relayer {
     console.log(message);
   }
 
-  // Recursively convert BigInt to string for safe JSON serialization
   private serializeBigInts(obj: any): any {
     if (typeof obj === 'bigint') {
       return obj.toString();
@@ -58,15 +61,13 @@ export class Relayer {
 
   private async connect() {
     this.detachListeners();
-    const currentNetwork = this.networkConfig;
-    console.log("Connecting to network: ", currentNetwork);
+    this.log(`[Relayer] Connecting to network: ${this.networkConfig.name} (${this.networkConfig.chainId})`);
 
     try {
-      this.provider = new ethers.WebSocketProvider(currentNetwork.wsUrl);
+      this.provider = new ethers.WebSocketProvider(this.networkConfig.wsUrl);
       this.wallet = new Wallet(RELAYER_PRIVATE_KEY, this.provider);
-      this.bridgeFactory = new Contract(currentNetwork.bridgeFactoryAddress, bridgeFactoryAbi.abi, this.wallet);
+      this.bridgeFactory = new Contract(this.networkConfig.bridgeFactoryAddress, bridgeFactoryAbi.abi, this.wallet);
 
-      // WebSocket reconnection handlers
       const ws = (this.provider as any).websocket;
       if (ws) {
         ws.on('close', () => {
@@ -80,15 +81,8 @@ export class Relayer {
         });
       }
 
-      // Block event logging every 10 blocks
-      // this.provider.on('block', (blockNumber) => {
-      //   if (blockNumber % 10 === 0) {
-      //     this.log(`[Relayer] Connected at block ${blockNumber}`);
-      //   }
-      // });
-
       this.attachListeners();
-      this.log(`[Relayer] Connected to network: ${currentNetwork.wsUrl}`);
+      this.log(`[Relayer] Connected to network: ${this.networkConfig.wsUrl}`);
     } catch (error) {
       this.log(`[Relayer] Connection error: ${error instanceof Error ? error.message : 'Unknown error'}`);
       this.reconnect();
@@ -97,6 +91,7 @@ export class Relayer {
 
   private attachListeners() {
     if (!this.bridgeFactory) return;
+    if (this.listenersActive) return;
     this.listenersActive = true;
 
     this.bridgeFactory.on('TokenLocked', async (...args) => {
@@ -132,7 +127,7 @@ export class Relayer {
     this.bridgeFactory.on('TokenBurned', async (...args) => {
       const event = args[args.length - 1] as EventLog;
       this.log(`[Relayer] TokenBurned event detected:\n${JSON.stringify(this.serializeBigInts(event.args), null, 2)}`);
-    
+
       try {
         const claim = await this.buildAndSignClaim(event, 'burn');
         claim.claimType = 'burn';
@@ -155,26 +150,22 @@ export class Relayer {
     this.log('[Relayer] Listeners detached.');
   }
 
-  /**
-   * Signs the claim for TokenLocked, NativeLocked, or TokenBurned event
-   */
   private async buildAndSignClaim(event: EventLog, claimType: 'lock' | 'burn'): Promise<SignedClaim> {
     const safeArgs = this.serializeBigInts(event.args);
     this.log('[Relayer] Event args: ' + JSON.stringify(safeArgs));
 
+    let user, token, amount, targetChainId, sourceChainId, nonce, originalToken, originalChainId;
     let targetBridgeFactoryAddress: string | null = null;
     let packed: string | null = null;
-    let user, token, amount, targetChainId, sourceChainId, nonce;
+
     if (claimType === 'lock') {
       if (event.eventName === 'TokenLocked') {
         ({ user, token, amount, targetChainId, nonce } = event.args);
       } else if (event.eventName === 'NativeLocked') {
         [user, amount, targetChainId, nonce] = event.args;
-        token = '0x0000000000000000000000000000000000000000';
-      } else if (event.eventName === 'TokenBurned') {
-        [user, token, amount, targetChainId, nonce] = event.args;
+        token = ethers.ZeroAddress;
       } else {
-        throw new Error(`Unsupported event type: ${event.eventName}`);
+        throw new Error(`Unsupported event type for lock claim: ${event.eventName}`);
       }
 
       if (!user || !token || !amount || !targetChainId || !nonce) {
@@ -182,25 +173,17 @@ export class Relayer {
         throw new Error('Missing event argument in event');
       }
 
-      targetBridgeFactoryAddress = getNetworkByChainId(targetChainId).bridgeFactoryAddress;
+      targetBridgeFactoryAddress = getNetworkConfigByChainId(targetChainId).bridgeFactoryAddress;
       packed = ethers.solidityPacked(
         ['address', 'address', 'uint256', 'uint256', 'uint256', 'address'],
-        [
-          user,
-          token === '0x0000000000000000000000000000000000000000' ? '0x0000000000000000000000000000000000000000' : token,
-          amount,
-          nonce,
-          this.networkConfig.chainId,
-          targetBridgeFactoryAddress
-        ]
+        [user, token, amount, nonce, this.networkConfig.chainId, targetBridgeFactoryAddress]
       );
 
       const hash = ethers.keccak256(packed!);
-      this.log('[Relayer] Hash to sign: ' + hash);
-  
+
       const signature = await this.wallet.signMessage(ethers.getBytes(hash));
       this.log('[Relayer] Signature: ' + signature);
-  
+
       return {
         user,
         token,
@@ -211,60 +194,38 @@ export class Relayer {
         claimed: false
       };
 
-
-
     } else if (claimType === 'burn') {
-      let originalToken, originalChainId;
-      if (event.eventName === 'TokenBurned') {
-        [user, token, originalToken, amount, originalChainId, nonce] = event.args;
-      } else {
+      if (event.eventName !== 'TokenBurned') {
         throw new Error(`Unsupported event type: ${event.eventName}`);
       }
+      
+      let [user, token, originalToken, amount, originalChainId, nonce] = event.args;
 
       if (!user || !token || !originalToken || !amount || !originalChainId || !nonce) {
         this.log('[Relayer] ERROR: Missing event argument: ' + JSON.stringify(safeArgs));
         throw new Error('Missing event argument in event');
       }
 
-      this.log(`[Relayer] TokenBurned event details:`);
-      this.log(`  User: ${user}`);
-      this.log(`  Wrapped Token: ${token}`);
-      this.log(`  Original Token: ${originalToken}`);
-      this.log(`  Amount: ${amount}`);
-      this.log(`  Original Chain ID: ${originalChainId}`);
-      this.log(`  Nonce: ${nonce}`);
-      this.log(`  Current Network Chain ID: ${this.networkConfig.chainId}`);
+      targetBridgeFactoryAddress = getNetworkConfigByChainId(originalChainId).bridgeFactoryAddress;
 
-      const cliConfig = cliConfigManager.getCliConfig();
-      targetBridgeFactoryAddress = getNetworkByChainId(originalChainId).bridgeFactoryAddress;
-      this.log(`[Relayer] Target Bridge Factory Address: ${targetBridgeFactoryAddress}`);
-      
       token = originalToken;
-      
+
       packed = ethers.solidityPacked(
         ['address', 'address', 'uint256', 'uint256', 'uint256', 'address'],
-        [
-          user,
-          token,
-          amount,
-          nonce,
-          originalChainId,
-          targetBridgeFactoryAddress
-        ]
+        [user, token, amount, nonce, originalChainId, targetBridgeFactoryAddress]
       );
 
       const hash = ethers.keccak256(packed!);
-      this.log('[Relayer] Hash to sign: ' + hash);
-  
+
       const signature = await this.wallet.signMessage(ethers.getBytes(hash));
       this.log('[Relayer] Signature: ' + signature);
-  
+
       return {
         user,
         token,
         amount: amount.toString(),
         nonce: nonce.toString(),
-        sourceChainId: cliConfig.currentNetwork.chainId.toString(),
+        sourceChainId: this.networkConfig.chainId.toString(),
         signature,
         claimed: false
       };
@@ -274,27 +235,14 @@ export class Relayer {
   }
 
   private reconnect() {
-    if (this.reconnectTimeout) {
-      clearTimeout(this.reconnectTimeout);
-    }
+    if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
     this.reconnectTimeout = setTimeout(() => {
       this.log('[Relayer] Reconnecting...');
-      this.connect();
+      this.connect().catch(err => {
+        this.log(`[Relayer] Reconnect failed: ${err instanceof Error ? err.message : err}`);
+      });
     }, 5000);
   }
-
-  // private watchConfigChanges() {
-  //   this.configPollInterval = setInterval(async () => {
-  //     const newConfig = cliConfigManager.getCliConfig();
-  //     if (
-  //       newConfig.currentNetwork.wsUrl !== this.networkConfig.wsUrl ||
-  //       newConfig.currentNetwork.bridgeFactoryAddress !== this.networkConfig.bridgeFactoryAddress
-  //     ) {
-  //       this.log('[Relayer] Network config changed. Switching...');
-  //       await this.connect();
-  //     }
-  //   }, 5000);
-  // }
 
   public stop() {
     this.detachListeners();

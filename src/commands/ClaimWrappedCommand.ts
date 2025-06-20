@@ -3,7 +3,7 @@ import { BaseCommand } from './BaseCommand';
 import { claimToken } from '../utils/blockchain';
 import { cliConfigManager } from '../config/cliConfig';
 import { claimsManager } from '../relayer/claimsManager'; // Import claimsManager singleton
-import { USER_PRIVATE_KEY } from '../config/config';
+import { USER_PRIVATE_KEY } from '../config/configLoader';
 import { SignedClaim } from '../relayer/claimsManager';
 import { TxLogger } from '../utils/txLogger';
 
@@ -15,14 +15,19 @@ function getProviderAndWallet() {
 }
 
 export class ClaimWrappedCommand extends BaseCommand {
-
   protected async action(): Promise<void> {
-    const { wallet } = getProviderAndWallet();
+    const { wallet, provider } = getProviderAndWallet();
     const userAddress = wallet.address.toLowerCase();
   
 
-    const claim: SignedClaim | null = await claimsManager.getNextUnclaimedClaim(userAddress, 'lock');
-    console.log('DEBUG: claim', claim);
+    let claim: SignedClaim | null;
+    try {
+      claim = await claimsManager.getNextUnclaimedClaim(userAddress, 'lock');
+    } catch (error) {
+      console.error('Error getting next unclaimed claim:', error instanceof Error ? error.message : 'Unknown error');
+      await provider.destroy();
+      throw error;
+    }
 
     if (!claim) {
       console.log('No unclaimed claims found');
@@ -31,13 +36,10 @@ export class ClaimWrappedCommand extends BaseCommand {
 
     const { user, token, amount, sourceChainId, nonce, signature } = claim;
 
-    const amountFormatted = ethers.formatUnits(amount, 18); // Adjust decimals dynamically if needed
 
-    console.log(`Claiming tokens for amount: ${amountFormatted}, nonce: ${nonce}, sourceChainId: ${sourceChainId}`);
+    console.log(`Claiming tokens for amount: ${amount}, nonce: ${nonce}, sourceChainId: ${sourceChainId}`);
 
     try {
-      console.log('\nClaiming tokens...');
-
       const tx = await claimToken(
         user,
         token,
@@ -48,14 +50,12 @@ export class ClaimWrappedCommand extends BaseCommand {
         true
       );
 
-      console.log('DEBUG: tx', tx);
-
       console.log(`Transaction hash: ${tx.hash}`);
-      const receipt = await tx.wait();
-      console.log(`Transaction confirmed in block ${receipt?.blockNumber}`);
-      console.log(`Gas used: ${receipt?.gasUsed.toString()}`);
 
-      // Log transaction to common file
+      const receipt = await tx.wait();
+
+      console.log(`Transaction confirmed in block ${receipt?.blockNumber}`);
+
       TxLogger.logTransaction({
         command: 'claim',
         hash: tx.hash,
@@ -65,8 +65,8 @@ export class ClaimWrappedCommand extends BaseCommand {
         gasUsed: receipt?.gasUsed?.toString(),
         user,
         token,
-        amount,
-        chainId: Number(sourceChainId),
+        amount: amount.toString(),
+        chainId: sourceChainId.toString()
       });
 
       await claimsManager.markClaimAsClaimed(userAddress, nonce);

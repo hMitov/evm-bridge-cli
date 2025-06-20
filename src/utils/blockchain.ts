@@ -2,27 +2,9 @@ import { ethers, Contract, ContractTransactionResponse, Signature } from 'ethers
 import * as bridgeFactoryAbi from '../contracts/abis/BridgeFactory.json';
 import * as werc20Abi from '../contracts/abis/WERC20.json';
 import { cliConfigManager } from '../config/cliConfig';
-import { USER_PRIVATE_KEY } from '../config/config';
-import { PermitData, TokenInfo } from '../types';
-import { networks } from '../config/networks';
-import { config } from 'dotenv';
-import { getNetworkByChainId, getNetworkList } from '../config/networks';
-function arrayify(data: string): Uint8Array {
-  return Uint8Array.from(Buffer.from(data.replace(/^0x/, ''), 'hex'));
-}
-
-// const ERC20_ABI = [
-//   "function symbol() view returns (string)",
-//   "function decimals() view returns (uint8)",
-//   "function balanceOf(address) view returns (uint256)",
-//   "function approve(address spender, uint256 amount) returns (bool)",
-//   "function nonces(address) view returns (uint256)",
-//   "function name() view returns (string)",
-//   "function allowance(address owner, address spender) view returns (uint256)",
-//   "function transfer(address to, uint256 amount) returns (bool)",
-//   "function transferFrom(address from, address to, uint256 amount) returns (bool)",
-//   "function DOMAIN_SEPARATOR() view returns (bytes32)"
-// ];
+import { USER_PRIVATE_KEY } from '../config/configLoader';
+import { TokenInfo } from '../types';
+import { getNetworkConfigByChainId } from '../config/networks';
 
 function getProviderAndWallet() {
   const currentNetwork = cliConfigManager.getCliConfig().currentNetwork;
@@ -46,12 +28,15 @@ export const getTokenInfo = async (
 
     const allowance = await tokenContract.allowance(wallet.address, currentNetwork.bridgeFactoryAddress);
 
-    console.log('Token address:', tokenAddress);
-    console.log('Wallet address:', wallet.address);
-    console.log('Bridge address:', currentNetwork.bridgeFactoryAddress);
-    console.log('Balance:', ethers.formatUnits(balance, decimals));
-    console.log('Allowance:', ethers.formatUnits(allowance, decimals));
-    console.log('Decimals:', decimals);
+    console.log(`
+      Token Info:
+        Token address: ${tokenAddress}
+        Wallet address: ${wallet.address}
+        Bridge address: ${currentNetwork.bridgeFactoryAddress}
+        Balance: ${ethers.formatUnits(balance, decimals)}
+        Allowance: ${ethers.formatUnits(allowance, decimals)}
+        Decimals: ${decimals}
+      `);
 
     return {
       address: tokenAddress,
@@ -72,18 +57,13 @@ async function generatePermitSignature(
   amount: ethers.BigNumberish,
   deadline: ethers.BigNumberish
 ) {
-  // Attach to token contract (make sure ABI includes permit and nonces)
   const tokenContract = new ethers.Contract(tokenAddress, werc20Abi.abi, wallet);
 
-    // Step 1: Fetch on-chain DOMAIN_SEPARATOR
   const onChainDomainSeparator = await tokenContract.DOMAIN_SEPARATOR();
-  console.log("On-chain DOMAIN_SEPARATOR:", onChainDomainSeparator);
-  // Fetch token details
   const name = await tokenContract.name();
   const nonce = await tokenContract.nonces(wallet.address);
   const chainId = (await wallet.provider!.getNetwork()).chainId;
 
-  // EIP-712 domain data
   const domain = {
     name,
     version: "2",
@@ -92,22 +72,11 @@ async function generatePermitSignature(
   };
 
   const offChainDomainSeparator = ethers.TypedDataEncoder.hashDomain(domain);
-  console.log("Off-chain DOMAIN_SEPARATOR:", offChainDomainSeparator);
 
-    // Compare domain separators
-    if (onChainDomainSeparator !== offChainDomainSeparator) {
-      console.error("Domain separator mismatch! Check token name, version, chainId, and verifyingContract.");
-    } else {
-      console.log("Domain separator matches.");
-    }
-  
+  if (onChainDomainSeparator !== offChainDomainSeparator) {
+    console.error("Domain separator mismatch! Check token name, version, chainId, and verifyingContract.");
+  }
 
-      // Step 3: Fetch current nonce and log
-  const nonceBN = await tokenContract.nonces(wallet.address);
-  const nonce1 = nonceBN.toString();
-  console.log("Current nonce from contract:", nonce1);
-
-  // Permit type data
   const types = {
     Permit: [
       { name: "owner", type: "address" },
@@ -118,23 +87,18 @@ async function generatePermitSignature(
     ],
   };
 
-  // Permit values
   const value = {
     owner: wallet.address,
     spender,
     value: amount.toString(),
     nonce: nonce.toString(),
     deadline: deadline.toString(),
-  };  
+  };
 
-  // Sign the typed data
   const signature = await wallet.signTypedData(domain, types, value);
-
-  // Split signature into v, r, s
   const sig = Signature.from(signature);
   const { v, r, s } = sig;
 
-  // Optional sanity check
   const recoveredAddress = ethers.verifyTypedData(domain, types, value, signature);
   if (recoveredAddress.toLowerCase() !== wallet.address.toLowerCase()) {
     throw new Error("Signature verification failed");
@@ -142,7 +106,6 @@ async function generatePermitSignature(
 
   return { v, r, s };
 }
-
 
 export const lockToken = async (
   tokenAddress: string,
@@ -152,37 +115,14 @@ export const lockToken = async (
 ): Promise<ContractTransactionResponse> => {
   const { wallet, currentNetwork } = getProviderAndWallet();
   const bridgeFactory = new Contract(currentNetwork.bridgeFactoryAddress, bridgeFactoryAbi.abi, wallet);
-  const nonce = Date.now();
-
-  // const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
-  // const permit = await generatePermitSignature(tokenAddress, wallet, currentNetwork.bridgeFactoryAddress, amount, deadline);
-
   const tokenContract = new Contract(tokenAddress, werc20Abi.abi, wallet);
-  // const domainSeparator = await tokenContract.DOMAIN_SEPARATOR(); 
-  // console.log("Domain Separator:", domainSeparator);
 
-  // await testTokenPermit(tokenContract, wallet, currentNetwork.bridgeFactoryAddress, amount, deadline, permit);
+  const nonce = Date.now();
 
   if (usePermit) {
     const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
-    const permitData = await generatePermitSignature(
-      tokenAddress, 
-      wallet, 
-      currentNetwork.bridgeFactoryAddress, 
-      amount, 
-      deadline
-    );
-
-    return bridgeFactory.lockTokenWithPermit(
-      tokenAddress,
-      amount,
-      targetChainId,
-      nonce,
-      deadline,
-      permitData.v,
-      permitData.r,
-      permitData.s
-    );
+    const { v, r, s } = await generatePermitSignature(tokenAddress, wallet, currentNetwork.bridgeFactoryAddress, amount, deadline);
+    return bridgeFactory.lockTokenWithPermit(tokenAddress, amount, targetChainId, nonce, deadline, v, r, s);
   } else {
     const approveTx = await tokenContract.approve(currentNetwork.bridgeFactoryAddress, amount);
     await approveTx.wait();
@@ -198,11 +138,10 @@ export const lockNative = async (
   amount: bigint,
   targetChainId: number
 ): Promise<ContractTransactionResponse> => {
-  const { wallet, currentNetwork } = getProviderAndWallet();
-  const bridgeFactory = new Contract(currentNetwork.bridgeFactoryAddress, bridgeFactoryAbi.abi, wallet);
-
   if (amount <= 0n) throw new Error('Amount must be > 0');
 
+  const { wallet, currentNetwork } = getProviderAndWallet();
+  const bridgeFactory = new Contract(currentNetwork.bridgeFactoryAddress, bridgeFactoryAbi.abi, wallet);
   const nonce = Date.now();
 
   console.log(`Locking native ETH: amount=${amount.toString()}, targetChainId=${targetChainId}, nonce=${nonce}`);
@@ -220,55 +159,40 @@ export const claimToken = async (
   signature: string,
   becomeWrapped: boolean
 ): Promise<ContractTransactionResponse> => {
-  console.log("Claiming token");
-  console.log("User Address:", userAddress);
-  console.log("Token Address:", tokenAddress);
-  console.log("Amount:", amount);
-  console.log("Nonce:", nonce);
-  console.log("Target Chain ID:", chainId);
-  console.log("Signature:", signature);
-
-
-  if (becomeWrapped) {
-    const targetChainId = cliConfigManager.getCliConfig().targetChainId!;
-    const targetNetwork = getNetworkByChainId(targetChainId);
-    const provider = new ethers.WebSocketProvider(targetNetwork.wsUrl);
-    const wallet = new ethers.Wallet(USER_PRIVATE_KEY, provider);
-  
-  
-    const bridgeFactory = new Contract(targetNetwork.bridgeFactoryAddress, bridgeFactoryAbi.abi, wallet);
-    return bridgeFactory.claimWrappedWithSignature(
+  try {
+    console.log("Claiming token with parameters:", {
       userAddress,
       tokenAddress,
-      amount,
-      nonce,
+      amount: amount.toString,
+      nonce: nonce.toString,
       chainId,
-      signature
-    );
-  } else {
-    console.log("Blockchain.ts: Claiming original chain: " + chainId);
-    const targetNetwork = getNetworkByChainId(chainId);
+      becomeWrapped,
+    });
+
+    const targetChainId = becomeWrapped
+      ? cliConfigManager.getCliConfig().targetChainId!
+      : chainId;
+
+    const targetNetwork = getNetworkConfigByChainId(targetChainId);
     const provider = new ethers.WebSocketProvider(targetNetwork.wsUrl);
     const wallet = new ethers.Wallet(USER_PRIVATE_KEY, provider);
-  
-  
-    const bridgeFactory = new Contract(targetNetwork.bridgeFactoryAddress, bridgeFactoryAbi.abi, wallet);
-    console.log("Claiming original token");
-    console.log("User Address:", userAddress);
-    console.log("Token Address:", tokenAddress);
-    console.log("Amount:", amount);
-    console.log("Nonce:", nonce);
-    console.log("Source Chain ID:", chainId);
-    console.log("Signature:", signature);
 
-    return bridgeFactory.claimOriginalWithSignature(
-      userAddress,
-      tokenAddress,
-      amount,
-      nonce,
-      chainId,
-      signature
-    );
+    const bridgeFactory = new Contract(targetNetwork.bridgeFactoryAddress, bridgeFactoryAbi.abi, wallet);
+
+    let tx: ContractTransactionResponse;
+
+    if (becomeWrapped) {
+      tx = await bridgeFactory.claimWrappedWithSignature(userAddress, tokenAddress, amount, nonce, chainId, signature);
+    } else {
+      tx = await bridgeFactory.claimOriginalWithSignature(userAddress, tokenAddress, amount, nonce, chainId, signature);
+    }
+
+    console.log(`Claim transaction sent. Hash: ${tx.hash}`);
+
+    return tx;
+  } catch (error) {
+    console.error('Error during claimToken:', error);
+    throw error;
   }
 };
 
@@ -280,33 +204,21 @@ export async function burnToken(
   wallet: ethers.Wallet
 ): Promise<ethers.TransactionResponse> {
   try {
-    const targetNetwork = getNetworkByChainId(cliConfigManager.getCliConfig().targetChainId!);
+    const targetChainId = cliConfigManager.getCliConfig().targetChainId!;
+    const targetNetwork = getNetworkConfigByChainId(targetChainId);
     const bridgeFactory = new Contract(targetNetwork.bridgeFactoryAddress, bridgeFactoryAbi.abi, wallet);
-    console.log("Bridge Factory: ", targetNetwork.bridgeFactoryAddress);
 
-    console.log('\nReturn Token Transaction Details:');
-    console.log('--------------------------------');
-    console.log('Network:', targetNetwork.name);
-    console.log('Wrapped Token:', wrappedTokenAddress);
-    console.log('Original Token:', originalTokenAddress);
-    console.log('Amount:', amount.toString());
-    console.log('Original Chain ID:', originalChainId.toString());
-    console.log('Wallet:', wallet.address);
-    console.log('--------------------------------\n');
-
-    // Get the current nonce for the wallet
-    if (!wallet.provider) {
-      throw new Error('Wallet provider is not initialized');
-    }
     const nonce = Date.now();
 
-    console.log("Nonce: ", nonce);
-    console.log("Wrapped Token Address: ", wrappedTokenAddress);
-    console.log("Original Token Address: ", originalTokenAddress);
-    console.log("Amount: ", amount);
-    console.log("Original Chain ID: ", originalChainId);
-    console.log("Wallet: ", wallet.address);
-    console.log("--------------------------------\n");
+    console.log(`
+      Nonce: ${nonce}
+      Wrapped Token Address: ${wrappedTokenAddress}
+      Original Token Address: ${originalTokenAddress}
+      Amount: ${amount.toString()}
+      Original Chain ID: ${originalChainId}
+      Wallet: ${wallet.address}
+      --------------------------------
+      `);
 
     const tx = await bridgeFactory.burnWrappedForReturn(
       wrappedTokenAddress,
@@ -316,14 +228,10 @@ export async function burnToken(
       nonce.toString()
     );
 
-    console.log("Tx: ", tx);
-
-    console.log(`\nTransaction sent! Hash: ${tx.hash}`);
-    console.log('Waiting for confirmation...');
-    
+    console.log(`Transaction sent! Hash: ${tx.hash}`);
     const receipt = await tx.wait();
-    console.log(`Transaction confirmed in block ${receipt?.blockNumber}`);
-    
+    console.log(`Transaction confirmed in block ${receipt.blockNumber}`);
+
     return tx;
   } catch (error) {
     console.error('Error in returnToken:', error);

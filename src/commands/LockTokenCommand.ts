@@ -3,10 +3,9 @@ import { ethers, Contract } from 'ethers';
 import { BaseCommand } from './BaseCommand';
 import { lockToken } from '../utils/blockchain';
 import { cliConfigManager } from '../config/cliConfig';
-import { USER_PRIVATE_KEY } from '../config/config';
+import { USER_PRIVATE_KEY } from '../config/configLoader';
 import werc20Abi from '../contracts/abis/WERC20.json';
 import { TxLogger } from '../utils/txLogger';
-import { getNetworkByChainId } from '../config/networks';
 
 function getProviderAndWallet() {
   const currentNetwork = cliConfigManager.getCliConfig().currentNetwork;
@@ -16,58 +15,53 @@ function getProviderAndWallet() {
 }
 
 export class LockTokenCommand extends BaseCommand {
-  
   protected async action(): Promise<void> {
     const config = cliConfigManager.getCliConfig();
-    console.log('DEBUG: Current CLI config:', config);
 
-
-
-
-    // const network = getNetworkByChainId(config.targetChainId!);
-    // const provider = new ethers.WebSocketProvider(network.wsUrl);
-    
-    // const usdcAddress = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"; // USDC contract on Ethereum Sepolia
-    // const usdcContract = new ethers.Contract(usdcAddress, werc20Abi.abi, provider);
-    // const decimals = await usdcContract.decimals();
-    // console.log("Decimals: ", decimals);
+    if (!config.targetChainId) {
+      throw new Error('No target chain selected. Please run `select-target-chain` first.');
+    }
+    const targetChainId = config.targetChainId;
 
     const tokenAddress = config.originalToken;
     if (!tokenAddress) {
       throw new Error('No token selected. Please run `select-token` first.');
     }
 
-    const targetChainId = config.targetChainId;
-    if (!targetChainId) {
-      throw new Error('No target chain selected. Please run `select-target-chain` first.');
-    }
-
-    const { amount, usePermit } = await inquirer.prompt([
+    const { amount, usePermit } = await inquirer.prompt<{ 
+      amount: string; 
+      usePermit: boolean 
+    }>([
       {
         type: 'input',
         name: 'amount',
         message: 'Enter amount to lock:',
-        validate: (input: string) => {
+        validate: (input: string): boolean | string => {
           const val = Number(input);
           if (isNaN(val) || val <= 0) {
             return 'Please enter a valid positive number';
           }
           return true;
-        }
+        },
       },
       {
         type: 'confirm',
         name: 'usePermit',
         message: 'Use permit for gas-efficient approval?',
         default: false
-      }
+      },
     ]);
 
+    const { wallet, provider } = getProviderAndWallet();
+
     try {
-      const { wallet } = getProviderAndWallet();
       const tokenContract = new Contract(tokenAddress, werc20Abi.abi, wallet.provider);
-      const decimals = await tokenContract.decimals();
-      console.log("Decimals: ", decimals);
+
+      const decimalsRaw = await tokenContract.decimals();
+      const decimals = Number(decimalsRaw);
+      if (isNaN(decimals) || decimals < 0) {
+        throw new Error('Invalid token decimals returned from contract.');
+      }
 
       const amountWei = ethers.parseUnits(amount, decimals);
 
@@ -76,12 +70,11 @@ export class LockTokenCommand extends BaseCommand {
       const tx = await lockToken(tokenAddress, amountWei, usePermit, targetChainId);
 
       console.log(`Transaction sent. Hash: ${tx.hash}`);
+      
       const receipt = await tx.wait();
-
+      
       console.log(`Transaction confirmed in block ${receipt?.blockNumber}`);
-      console.log(`Gas used: ${receipt?.gasUsed.toString()}`);
 
-      // Log transaction to common file
       TxLogger.logTransaction({
         command: 'lock',
         hash: tx.hash,
