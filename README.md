@@ -61,18 +61,39 @@ A TypeScript command-line tool for bridging tokens between EVM-compatible blockc
 
 2. **CLI Config**
    - The CLI stores session state in `.cli-config.json` (auto-generated).
+   - Below is an example of what this file looks like:
+     ```json
+     {
+       "currentNetwork": {
+         "name": "Base Sepolia",
+         "chainId": 84532,
+         "wsUrl": "wss://base-sepolia-rpc.publicnode.com",
+         "bridgeFactoryAddress": "0x...",
+         "explorerUrl": "https://sepolia.basescan.org"
+       },
+       "originalToken": "0x...",
+       "targetChainId": 11155111
+     }
+     ```
 
 ---
 
-## Usage
+## Workflow & Usage
 
+### Required Setup
+Before locking tokens, you must run the following commands to configure your session:
+
+1.  **`switch-network`** — Set your current (source) network.
+2.  **`select-target-chain`** — Choose the destination chain.
+3.  **`select-token`** — Provide the original address of the token you want to bridge.
+
+After completing these steps, your `.cli-config.json` file will be populated, and you can proceed with locking tokens.
+
+### Main Commands
 After building, use the CLI via:
 ```bash
 npx bridge <command>
 ```
-
-### Main Commands
-
 - `select-token` — Select a token to bridge
 - `select-target-chain` — Choose the destination chain
 - `lock-token` — Lock ERC20 tokens for bridging
@@ -88,8 +109,9 @@ npx bridge <command>
 
 **Lock and Claim:**
 ```bash
-npx bridge select-token
+npx bridge switch-network
 npx bridge select-target-chain
+npx bridge select-token
 npx bridge lock-token
 # ...wait for relayer to process...
 npx bridge claim-wrapped
@@ -112,11 +134,14 @@ npx bridge relayer
 
 ## Relayer Automation
 
-The relayer listens for bridge events (lock, burn) and automatically signs and manages claims. It supports multiple networks and logs activity to `relayer-<chainId>.log`.
+The relayer is a crucial component that automates the bridging process. When you run `npx bridge relayer`, the system starts a separate relayer instance for **each network** defined in your configuration.
 
-- **Start:** `npx bridge relayer`
-- **Stop:** Use Ctrl+C or send SIGINT/SIGTERM
-- **Logs:** Check `relayer-logs/` or `relayer-<chainId>.log`
+This allows the system to listen for events (like `TokenLocked` and `TokenBurned`) across all configured chains simultaneously. When an event is detected on one chain, the relayer for that chain processes it and securely signs a claim, which can then be used on the destination chain.
+
+- **Start Relayers:** `npx bridge relayer`
+- **Run in Background:** `npx bridge relayer --detach`
+- **Stop Relayers:** Use `Ctrl+C` or send a `SIGINT`/`SIGTERM` signal.
+- **Logs:** Each relayer instance logs its activity to a separate file, e.g., `relayer-<chainId>.log`.
 
 ---
 

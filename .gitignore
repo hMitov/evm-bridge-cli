@@ -50,3 +50,9 @@ pids
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Claims file
+claims.json
+
+# CLI config file
+.cli-config.json
