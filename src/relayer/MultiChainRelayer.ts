@@ -9,7 +9,7 @@ export class MultiChainRelayer {
 
     this.relayers = networks.map((networkConfig) => new Relayer(networkConfig));
 
-    console.log(`[MultiChainRelayer] Started ${this.relayers.length} relayer instances`);
+    console.log(`Started ${this.relayers.length} relayer instances`);
   }
 
   stop() {

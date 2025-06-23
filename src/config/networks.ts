@@ -1,3 +1,5 @@
+import { ConfigError } from '../errors/ConfigError';
+import { ERROR_MESSAGES } from '../errors/messages/errorMessages';
 import { NetworkConfig } from '../types';
 import {
   ETHEREUM_SEPOLIA_WS_URL,
@@ -32,7 +34,7 @@ export const networks: Record<number, NetworkConfig> = {
 export const getNetworkConfigByChainId = (chainId: number): NetworkConfig => {
   const network = networks[chainId];
   if (!network) {
-    throw new Error(`Network with chain ID ${chainId} not found`);
+    throw new ConfigError(ERROR_MESSAGES.UNKNOWN_CHAIN_ID(chainId));
   }
   return network;
 };

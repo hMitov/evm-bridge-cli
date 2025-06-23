@@ -2,16 +2,11 @@ import inquirer from 'inquirer';
 import { ethers } from 'ethers';
 import { BaseCommand } from './BaseCommand';
 import { cliConfigManager } from '../config/cliConfig';
-import { lockNative } from '../utils/blockchain';
-import { USER_PRIVATE_KEY } from '../config/configLoader';
-import { TxLogger } from '../utils/txLogger';
-
-function getProviderAndWallet() {
-    const currentNetwork = cliConfigManager.getCliConfig().currentNetwork;
-    const provider = new ethers.WebSocketProvider(currentNetwork.wsUrl);
-    const wallet = new ethers.Wallet(USER_PRIVATE_KEY, provider);
-    return { provider, wallet, currentNetwork };
-}
+import { lockNative } from '../utils/BridgeClient';
+import { TxLogger } from '../utils/TxLogger';
+import { LockNativeError } from '../errors/LockNativeError';
+import { BridgeUtils } from '../utils/BridgeUtils';
+import { ERROR_MESSAGES } from '../errors/messages/errorMessages';
 
 export class LockNativeCommand extends BaseCommand {
 
@@ -19,8 +14,9 @@ export class LockNativeCommand extends BaseCommand {
     const config = cliConfigManager.getCliConfig();
 
     if (!config.targetChainId) {
-      throw new Error('No target chain selected.');
+      throw new LockNativeError(ERROR_MESSAGES.TARGET_NETWORK_NOT_FOUND);
     }
+    const targetChainId = config.targetChainId;
 
     const { amount } = await inquirer.prompt<{ 
       amount: string 
@@ -29,22 +25,16 @@ export class LockNativeCommand extends BaseCommand {
         type: 'input',
         name: 'amount',
         message: 'Enter amount of native ETH to lock:',
-        validate: (input: string) => {
-          const val = Number(input);
-          if (isNaN(val) || val <= 0) return 'Enter a positive number';
-          return true;
-        },
+        validate: BridgeUtils.validateAmount,
       },
     ]);
-
-    const { provider } = getProviderAndWallet();
 
     try {
       const amountWei = ethers.parseEther(amount);
 
-      console.log(`\nLocking ${amount} native ETH (${amountWei.toString()} wei) to chain ID ${config.targetChainId}...`);
+      console.log(`\nLocking ${amount} native ETH (${amountWei.toString()} wei) to chain ID ${targetChainId}...`);
 
-      const tx = await lockNative(amountWei, config.targetChainId);
+      const tx = await lockNative(amountWei, targetChainId);
       
       console.log(`Transaction sent: ${tx.hash}`);
       
@@ -63,8 +53,12 @@ export class LockNativeCommand extends BaseCommand {
         chainId: config.currentNetwork.chainId,
       });
     } catch (error) {
-      console.error('Error locking native ETH:', error instanceof Error ? error.message : error);
-      throw error;
+      if (error instanceof LockNativeError) {
+        console.error('Lock native error:', error.message);
+        throw error;
+      }
+      console.error('Unexpected error locking native ETH:', error instanceof Error ? error.message : error);
+      throw new LockNativeError(error);
     }
   }
 }

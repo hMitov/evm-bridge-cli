@@ -3,7 +3,7 @@
     "name": "Sepolia",
     "chainId": 11155111,
     "wsUrl": "wss://ethereum-sepolia-rpc.publicnode.com",
-    "bridgeFactoryAddress": "0x1FAF0A82c15E92b7C5687FB7FE459e77d7AD3622",
+    "bridgeFactoryAddress": "0x81054269361dd2096F3D169b820a1b7A85b46Da3",
     "explorerUrl": "https://sepolia.etherscan.io"
   },
   "originalToken": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",

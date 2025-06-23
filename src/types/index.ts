@@ -37,6 +37,28 @@ export interface PermitData {
   s: string;
 }
 
+export interface SignedClaim {
+  user: string;
+  token: string;
+  amount: string;
+  sourceChainId: string;
+  nonce: string;
+  signature: string;
+  claimed?: boolean;
+  claimType?: 'lock' | 'burn';
+}
+
+export enum ClaimType {
+  LOCK = 'lock',
+  BURN = 'burn',
+}
+
+export enum EventName {
+  TOKEN_LOCKED = 'TokenLocked',
+  NATIVE_LOCKED = 'NativeLocked',
+  TOKEN_BURNED = 'TokenBurned',
+}
+
 export interface CLIConfig {
   currentNetwork: NetworkConfig
   targetChainId?: number;

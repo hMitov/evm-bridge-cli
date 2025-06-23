@@ -1,45 +1,29 @@
-import { ethers } from 'ethers';
 import { BaseCommand } from './BaseCommand';
-import { claimToken } from '../utils/blockchain';
-import { cliConfigManager } from '../config/cliConfig';
-import { claimsManager } from '../relayer/claimsManager'; // Import claimsManager singleton
-import { USER_PRIVATE_KEY } from '../config/configLoader';
-import { SignedClaim } from '../relayer/claimsManager';
-import { TxLogger } from '../utils/txLogger';
-
-function getProviderAndWallet() {
-  const currentNetwork = cliConfigManager.getCliConfig().currentNetwork;
-  const provider = new ethers.WebSocketProvider(currentNetwork.wsUrl);
-  const wallet = new ethers.Wallet(USER_PRIVATE_KEY, provider);
-  return { provider, wallet, currentNetwork };
-}
+import { claimToken } from '../utils/BridgeClient';
+import { claimsManager } from '../relayer/ClaimsManager';
+import { TxLogger } from '../utils/TxLogger';
+import { ClaimWrappedError } from '../errors/ClaimWrappedError';
+import { BridgeUtils } from '../utils/BridgeUtils';
+import { ClaimType } from '../types';
 
 export class ClaimWrappedCommand extends BaseCommand {
+
   protected async action(): Promise<void> {
-    const { wallet, provider } = getProviderAndWallet();
+
+    const { wallet, provider } = BridgeUtils.getProviderAndWallet();
     const userAddress = wallet.address.toLowerCase();
-  
-
-    let claim: SignedClaim | null;
-    try {
-      claim = await claimsManager.getNextUnclaimedClaim(userAddress, 'lock');
-    } catch (error) {
-      console.error('Error getting next unclaimed claim:', error instanceof Error ? error.message : 'Unknown error');
-      await provider.destroy();
-      throw error;
-    }
-
-    if (!claim) {
-      console.log('No unclaimed claims found');
-      return;
-    }
-
-    const { user, token, amount, sourceChainId, nonce, signature } = claim;
-
-
-    console.log(`Claiming tokens for amount: ${amount}, nonce: ${nonce}, sourceChainId: ${sourceChainId}`);
 
     try {
+      const claim = await claimsManager.getNextUnclaimedClaim(userAddress, ClaimType.LOCK);
+      if (!claim) {
+        console.log('No unclaimed claims found.');
+        return;
+      }
+
+      const { user, token, amount, sourceChainId, nonce, signature } = claim;
+
+      console.log(`Claiming tokens for amount: ${amount}, nonce: ${nonce}, sourceChainId: ${sourceChainId}`);
+
       const tx = await claimToken(
         user,
         token,
@@ -71,8 +55,14 @@ export class ClaimWrappedCommand extends BaseCommand {
 
       await claimsManager.markClaimAsClaimed(userAddress, nonce);
     } catch (error) {
-      console.error('Error claiming tokens:', error instanceof Error ? error.message : 'Unknown error');
-      throw error;
+      if (error instanceof ClaimWrappedError) {
+        console.error('Claim wrapped error:', error.message);
+        throw error;
+      }
+      console.error('Unexpected error claiming tokens:', error instanceof Error ? error.message : 'Unknown error');
+      throw new ClaimWrappedError(error);
+    } finally {
+      provider.destroy();
     }
   }
 }

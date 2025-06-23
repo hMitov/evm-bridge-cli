@@ -1,12 +1,19 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+
+
 export class TxLogger {
+  private static BIGINT_TYPE = 'bigint';
+  private static OBJECT_TYPE = 'object';
+  private static TRANSACTIONS_LOG_FILE = 'transactions.log';
+  private static ENCODING_FORMAT = 'utf-8';
+  
   static logTransaction(data: any) {
     const serializeBigInts = (obj: any): any => {
-      if (typeof obj === 'bigint') return obj.toString();
+      if (typeof obj === TxLogger.BIGINT_TYPE) return obj.toString();
       if (Array.isArray(obj)) return obj.map(serializeBigInts);
-      if (obj && typeof obj === 'object') {
+      if (obj && typeof obj === TxLogger.OBJECT_TYPE) {
         const res: any = {};
         for (const k in obj) res[k] = serializeBigInts(obj[k]);
         return res;
@@ -17,17 +24,17 @@ export class TxLogger {
       ...serializeBigInts(data),
       timestamp: new Date().toISOString(),
     };
-    const logPath = path.join(process.cwd(), 'transactions.log');
-    fs.appendFileSync(logPath, JSON.stringify(txData) + '\n', 'utf8');
+    const logPath = path.join(process.cwd(), TxLogger.TRANSACTIONS_LOG_FILE);
+    fs.appendFileSync(logPath, JSON.stringify(txData) + '\n', { encoding: TxLogger.ENCODING_FORMAT as BufferEncoding });
   }
 
   static showAllTransactions() {
-    const logPath = path.join(process.cwd(), 'transactions.log');
+    const logPath = path.join(process.cwd(), TxLogger.TRANSACTIONS_LOG_FILE);
     if (!fs.existsSync(logPath)) {
       console.log('No transactions found.');
       return;
     }
-    const lines = fs.readFileSync(logPath, 'utf8').split('\n').filter(Boolean);
+    const lines = fs.readFileSync(logPath, { encoding: TxLogger.ENCODING_FORMAT as BufferEncoding }).split('\n').filter(Boolean);
     const transactions = lines.map(line => {
       try {
         return JSON.parse(line);

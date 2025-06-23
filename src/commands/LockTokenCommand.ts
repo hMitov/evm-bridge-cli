@@ -1,78 +1,57 @@
 import inquirer from 'inquirer';
 import { ethers, Contract } from 'ethers';
 import { BaseCommand } from './BaseCommand';
-import { lockToken } from '../utils/blockchain';
+import { lockToken } from '../utils/BridgeClient';
 import { cliConfigManager } from '../config/cliConfig';
-import { USER_PRIVATE_KEY } from '../config/configLoader';
 import werc20Abi from '../contracts/abis/WERC20.json';
-import { TxLogger } from '../utils/txLogger';
-
-function getProviderAndWallet() {
-  const currentNetwork = cliConfigManager.getCliConfig().currentNetwork;
-  const provider = new ethers.WebSocketProvider(currentNetwork.wsUrl);
-  const wallet = new ethers.Wallet(USER_PRIVATE_KEY, provider);
-  return { provider, wallet, currentNetwork };
-}
+import { TxLogger } from '../utils/TxLogger';
+import { LockTokenError } from '../errors/LockTokenError';
+import { BridgeUtils } from '../utils/BridgeUtils';
 
 export class LockTokenCommand extends BaseCommand {
+
   protected async action(): Promise<void> {
     const config = cliConfigManager.getCliConfig();
-
-    if (!config.targetChainId) {
-      throw new Error('No target chain selected. Please run `select-target-chain` first.');
-    }
-    const targetChainId = config.targetChainId;
-
-    const tokenAddress = config.originalToken;
-    if (!tokenAddress) {
-      throw new Error('No token selected. Please run `select-token` first.');
-    }
-
-    const { amount, usePermit } = await inquirer.prompt<{ 
-      amount: string; 
-      usePermit: boolean 
-    }>([
-      {
-        type: 'input',
-        name: 'amount',
-        message: 'Enter amount to lock:',
-        validate: (input: string): boolean | string => {
-          const val = Number(input);
-          if (isNaN(val) || val <= 0) {
-            return 'Please enter a valid positive number';
-          }
-          return true;
-        },
-      },
-      {
-        type: 'confirm',
-        name: 'usePermit',
-        message: 'Use permit for gas-efficient approval?',
-        default: false
-      },
-    ]);
-
-    const { wallet, provider } = getProviderAndWallet();
+    const { wallet, provider } = BridgeUtils.getProviderAndWallet();
 
     try {
-      const tokenContract = new Contract(tokenAddress, werc20Abi.abi, wallet.provider);
+      BridgeUtils.validateLockTokenConfig(config);
 
-      const decimalsRaw = await tokenContract.decimals();
-      const decimals = Number(decimalsRaw);
-      if (isNaN(decimals) || decimals < 0) {
-        throw new Error('Invalid token decimals returned from contract.');
-      }
+      const { amount, usePermit } = await inquirer.prompt<{
+        amount: string;
+        usePermit: boolean
+      }>([
+        {
+          type: 'input',
+          name: 'amount',
+          message: 'Enter amount to lock:',
+          validate: BridgeUtils.validateAmount,
+        },
+        {
+          type: 'confirm',
+          name: 'usePermit',
+          message: 'Use permit for gas-efficient approval?',
+          default: false
+        },
+      ]);
 
+      const tokenAddress = config.originalToken;
+      const targetChainId = config.targetChainId;
+      const currentChainId = config.currentNetwork.chainId;
+
+      const tokenContract = new Contract(tokenAddress!, werc20Abi.abi, wallet.provider);
+
+      const decimals = await tokenContract.decimals();
       const amountWei = ethers.parseUnits(amount, decimals);
 
       console.log(`\nLocking ${amount} tokens (${amountWei.toString()} wei) to chain ID ${targetChainId}...`);
 
-      const tx = await lockToken(tokenAddress, amountWei, usePermit, targetChainId);
+      const tx = await lockToken(tokenAddress!, amountWei, usePermit, targetChainId!);
 
       console.log(`Transaction sent. Hash: ${tx.hash}`);
-      
+
       const receipt = await tx.wait();
-      
+
       console.log(`Transaction confirmed in block ${receipt?.blockNumber}`);
 
       TxLogger.logTransaction({
@@ -84,12 +63,18 @@ export class LockTokenCommand extends BaseCommand {
         gasUsed: receipt?.gasUsed?.toString(),
         tokenAddress,
         amount: amountWei.toString(),
-        chainId: config.currentNetwork.chainId,
+        chainId: currentChainId,
       });
 
     } catch (error) {
-      console.error('Error locking tokens:', error instanceof Error ? error.message : 'Unknown error');
-      throw error;
+      if (error instanceof LockTokenError) {
+        console.error('Lock token error:', error.message);
+        throw error;
+      }
+      console.error('Unexpected error locking tokens:', error instanceof Error ? error.message : error);
+      throw new LockTokenError(error);
+    } finally { 
+      provider.destroy();
     }
   }
 }

@@ -1,122 +1,144 @@
 # EVM Token Bridge CLI
 
-A command-line interface tool for bridging tokens between EVM-compatible chains using deployed BridgeFactory and WERC20 contracts.
+A TypeScript command-line tool for bridging tokens between EVM-compatible blockchains using deployed BridgeFactory and WERC20 contracts.
+
+---
 
 ## Features
+- **Multi-chain support:** Easily bridge tokens between EVM networks (e.g., Sepolia, Base)
+- **Interactive CLI:** Guided prompts for all actions
+- **Token selection & validation:** Choose and verify tokens before bridging
+- **Gas-efficient approvals:** EIP-2612 permit support
+- **Transaction history:** Track all bridge operations
+- **Automated relayer:** Listen for and process bridge events
+- **Type-safe codebase:** Written in modern TypeScript
 
-- Support for multiple EVM networks (Sepolia, Base, etc.)
-- Token selection and validation
-- Gas-efficient token approvals using EIP-2612 permits
-- Transaction history tracking
-- Interactive command-line interface
-- TypeScript implementation with type safety
+---
 
 ## Installation
 
-1. Clone the repository:
-```bash
-git clone <repository-url>
-cd evm-bridge-cli
-```
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/hMitov/evm-bridge-cli.git
+   cd evm-bridge-cli
+   ```
+2. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+3. **Build the project:**
+   ```bash
+   npm run build
+   ```
 
-2. Install dependencies:
-```bash
-npm install
-```
+---
 
-3. Build the project:
-```bash
-npm run build
-```
+## Configuration
 
-4. Create a `.env` file in the project root with the following variables:
-```env
-# Network RPC URLs
-ETHEREUM_SEPOLIA_RPC_URL=https://sepolia.infura.io/v3/your-infura-key
-BASE_SEPOLIA_RPC_URL=https://mainnet.base.org
+1. **Environment Variables**
+   
+   Create a `.env` file in the project root. Below is a template with the required variables:
+   ```env
+   # --- Ethereum Sepolia Network ---
+   ETHEREUM_SEPOLIA_WS_URL=<your_ethereum_sepolia_ws_url>
+   ETHEREUM_SEPOLIA_BRIDGE_FACTORY=<your_sepolia_bridge_factory_address>
+   ETHEREUM_SEPOLIA_NAME="Ethereum Sepolia"
+   ETHEREUM_SEPOLIA_CHAIN_ID=11155111
+   ETHEREUM_SEPOLIA_EXPLORER_URL=https://sepolia.etherscan.io
 
-# Bridge Contract Addresses
-SEPOLIA_BRIDGE_FACTORY=0x1234567890123456789012345678901234567890
-BASE_BRIDGE_FACTORY=0x0987654321098765432109876543210987654321
+   # --- Base Sepolia Network ---
+   BASE_SEPOLIA_WS_URL=<your_base_sepolia_ws_url>
+   BASE_SEPOLIA_BRIDGE_FACTORY=<your_base_bridge_factory_address>
+   BASE_SEPOLIA_NAME="Base Sepolia"
+   BASE_SEPOLIA_CHAIN_ID=84532
+   BASE_SEPOLIA_EXPLORER_URL=https://sepolia.basescan.org
 
-# Wallet Configuration
-PRIVATE_KEY=your-private-key-here
+   # --- Wallets ---
+   USER_PRIVATE_KEY=<your_primary_wallet_private_key>
+   RELAYER_PRIVATE_KEY=<your_relayer_wallet_private_key>
+   ```
+   **Important:** Never commit your `.env` file or expose your private keys.
 
-# Optional: Gas Price Settings
-MAX_GAS_PRICE=50000000000
-GAS_LIMIT=3000000
-```
+2. **CLI Config**
+   - The CLI stores session state in `.cli-config.json` (auto-generated).
+
+---
 
 ## Usage
 
-The CLI provides the following commands:
-
-### Select Token
+After building, use the CLI via:
 ```bash
-bridge select-token
-```
-Prompts for a token contract address and displays token information.
-
-### Select Target Chain
-```bash
-bridge select-target-chain
-```
-Shows available target chains and allows selection.
-
-### Lock Tokens
-```bash
-bridge lock
-```
-Locks tokens for bridging with optional permit support.
-
-### Claim Tokens
-```bash
-bridge claim
-```
-Claims tokens on the target chain using provided parameters.
-
-### Return Tokens
-```bash
-bridge return
-```
-Burns wrapped tokens to return original tokens.
-
-### View History
-```bash
-bridge history
-```
-Displays transaction history for the connected wallet.
-
-### Switch Network
-```bash
-bridge switch-network
-```
-Changes the connected network.
-
-## Development
-
-1. Install development dependencies:
-```bash
-npm install
+npx bridge <command>
 ```
 
-2. Start development mode:
+### Main Commands
+
+- `select-token` — Select a token to bridge
+- `select-target-chain` — Choose the destination chain
+- `lock-token` — Lock ERC20 tokens for bridging
+- `lock-native` — Lock native tokens (e.g., ETH)
+- `claim-wrapped` — Claim wrapped tokens on the target chain
+- `claim-origin` — Claim original tokens on the source chain
+- `burn-token` — Burn wrapped tokens to return to the origin chain
+- `history` — View transaction history
+- `switch-network` — Change the active network
+- `relayer` — Start the relayer to listen for bridge events
+
+### Example Flows
+
+**Lock and Claim:**
 ```bash
-npm run dev
+npx bridge select-token
+npx bridge select-target-chain
+npx bridge lock-token
+# ...wait for relayer to process...
+npx bridge claim-wrapped
 ```
 
-3. Build for production:
+**Return Tokens:**
 ```bash
-npm run build
+npx bridge burn-token
+# ...wait for relayer to process...
+npx bridge claim-origin
 ```
 
-## Security Considerations
+**Start Relayer:**
+```bash
+npx bridge relayer
+# Add -d or --detach to run in background
+```
 
-- Never commit your `.env` file or expose your private key
-- Use environment variables for sensitive data
-- Consider using a hardware wallet for production use
-- Review contract addresses and network configurations before use
+---
 
-## License
+## Relayer Automation
 
-ISC 
+The relayer listens for bridge events (lock, burn) and automatically signs and manages claims. It supports multiple networks and logs activity to `relayer-<chainId>.log`.
+
+- **Start:** `npx bridge relayer`
+- **Stop:** Use Ctrl+C or send SIGINT/SIGTERM
+- **Logs:** Check `relayer-logs/` or `relayer-<chainId>.log`
+
+---
+
+## Development & Contribution
+
+- **Start in dev mode:**
+  ```bash
+  npm run dev
+  ```
+- **Build for production:**
+  ```bash
+  npm run build
+  ```
+- **Type checking:**
+  ```bash
+  npx tsc --noEmit
+  ```
+- **Project structure:**
+  - `src/commands/` — CLI command implementations
+  - `src/relayer/` — Relayer and claims management
+  - `src/utils/` — Utility functions and helpers
+  - `src/config/` — Network and config management
+  - `src/types/` — Shared types/interfaces
+  - `src/contracts/abis/` — Contract ABIs (WERC20, BridgeFactory)
+  - `src/errors/` — Custom error classes

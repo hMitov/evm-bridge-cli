@@ -1,11 +1,12 @@
 import { ethers, Contract, Wallet, WebSocketProvider, EventLog } from 'ethers';
 import * as bridgeFactoryAbi from '../contracts/abis/BridgeFactory.json';
 import { RELAYER_PRIVATE_KEY } from '../config/configLoader';
-import { NetworkConfig } from '../types';
+import { ClaimType, EventName, NetworkConfig } from '../types';
 import * as fs from 'fs';
 import * as path from 'path';
-import { claimsManager, SignedClaim } from './claimsManager';
+import { claimsManager } from './ClaimsManager';
 import { getNetworkConfigByChainId } from '../config/networks';
+import { SignedClaim } from '../types';
 
 export class Relayer {
   private provider!: WebSocketProvider;
@@ -90,56 +91,38 @@ export class Relayer {
   }
 
   private attachListeners() {
-    if (!this.bridgeFactory) return;
-    if (this.listenersActive) return;
+    if (!this.bridgeFactory || this.listenersActive) return;
     this.listenersActive = true;
 
-    this.bridgeFactory.on('TokenLocked', async (...args) => {
-      const event = args[args.length - 1] as EventLog;
-      this.log(`[Relayer] TokenLocked event detected:\n${JSON.stringify(this.serializeBigInts(event.args), null, 2)}`);
-
-      try {
-        const claim = await this.buildAndSignClaim(event, 'lock');
-        claim.claimType = 'lock';
-        await claimsManager.addClaim(claim);
-        this.log('[Relayer] Claim added to ClaimsManager');
-      } catch (error) {
-        this.log(`[Relayer] Error processing TokenLocked event: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        console.error('[Relayer] Full error:', error);
-      }
+    this.bridgeFactory.on(EventName.TOKEN_LOCKED, async (...args) => {
+      await this.handleEvent(EventName.TOKEN_LOCKED, args);
     });
 
-    this.bridgeFactory.on('NativeLocked', async (...args) => {
-      const event = args[args.length - 1] as EventLog;
-      this.log(`[Relayer] NativeLocked event detected:\n${JSON.stringify(this.serializeBigInts(event.args), null, 2)}`);
-
-      try {
-        const claim = await this.buildAndSignClaim(event, 'lock');
-        claim.claimType = 'lock';
-        await claimsManager.addClaim(claim);
-        this.log('[Relayer] Claim added to ClaimsManager');
-      } catch (error) {
-        this.log(`[Relayer] Error processing NativeLocked event: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        console.error('[Relayer] Full error:', error);
-      }
+    this.bridgeFactory.on(EventName.NATIVE_LOCKED, async (...args) => {
+      await this.handleEvent(EventName.NATIVE_LOCKED, args);
     });
 
-    this.bridgeFactory.on('TokenBurned', async (...args) => {
-      const event = args[args.length - 1] as EventLog;
-      this.log(`[Relayer] TokenBurned event detected:\n${JSON.stringify(this.serializeBigInts(event.args), null, 2)}`);
-
-      try {
-        const claim = await this.buildAndSignClaim(event, 'burn');
-        claim.claimType = 'burn';
-        await claimsManager.addClaim(claim);
-        this.log('[Relayer] Claim added to ClaimsManager from TokenBurned');
-      } catch (error) {
-        this.log(`[Relayer] Error processing TokenBurned event: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        console.error('[Relayer] Full error:', error);
-      }
+    this.bridgeFactory.on(EventName.TOKEN_BURNED, async (...args) => {
+      await this.handleEvent(EventName.TOKEN_BURNED, args);
     });
 
-    this.log('[Relayer] Listeners attached.');
+    this.log('Listeners attached.');
+  }
+
+  private async handleEvent(eventName: string, args: any[]) {
+    const event = args[args.length - 1] as EventLog;
+    this.log(`${eventName} event detected:\n${JSON.stringify(this.serializeBigInts(event.args), null, 2)}`);
+
+    try {
+      const claimType = eventName === EventName.TOKEN_BURNED ? ClaimType.BURN : ClaimType.LOCK;
+      const claim = await this.buildAndSignClaim(event, claimType);
+      claim.claimType = claimType;
+      await claimsManager.addClaim(claim);
+      this.log(`Claim added to ClaimsManager from ${eventName}`);
+    } catch (error) {
+      this.log(`Error processing ${eventName} event: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error(`[Relayer] Full error:`, error);
+    }
   }
 
   private detachListeners() {
@@ -150,7 +133,7 @@ export class Relayer {
     this.log('[Relayer] Listeners detached.');
   }
 
-  private async buildAndSignClaim(event: EventLog, claimType: 'lock' | 'burn'): Promise<SignedClaim> {
+  private async buildAndSignClaim(event: EventLog, claimType: ClaimType.LOCK | ClaimType.BURN): Promise<SignedClaim> {
     const safeArgs = this.serializeBigInts(event.args);
     this.log('[Relayer] Event args: ' + JSON.stringify(safeArgs));
 
@@ -158,10 +141,10 @@ export class Relayer {
     let targetBridgeFactoryAddress: string | null = null;
     let packed: string | null = null;
 
-    if (claimType === 'lock') {
-      if (event.eventName === 'TokenLocked') {
+    if (claimType === ClaimType.LOCK) {
+      if (event.eventName === EventName.TOKEN_LOCKED) {
         ({ user, token, amount, targetChainId, nonce } = event.args);
-      } else if (event.eventName === 'NativeLocked') {
+      } else if (event.eventName === EventName.NATIVE_LOCKED) {
         [user, amount, targetChainId, nonce] = event.args;
         token = ethers.ZeroAddress;
       } else {
@@ -194,8 +177,8 @@ export class Relayer {
         claimed: false
       };
 
-    } else if (claimType === 'burn') {
-      if (event.eventName !== 'TokenBurned') {
+    } else if (claimType === ClaimType.BURN) {
+      if (event.eventName !== EventName.TOKEN_BURNED) {
         throw new Error(`Unsupported event type: ${event.eventName}`);
       }
       
