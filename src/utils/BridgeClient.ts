@@ -55,13 +55,11 @@ export const lockToken = async (
   const bridgeFactory = new Contract(currentNetwork.bridgeFactoryAddress, bridgeFactoryAbi.abi, wallet);
   const tokenContract = new Contract(tokenAddress, werc20Abi.abi, wallet);
 
-  const nonce = Date.now();
-
   try {
     if (usePermit) {
       const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
       const { v, r, s } = await BridgeUtils.generatePermitSignature(tokenAddress, wallet, currentNetwork.bridgeFactoryAddress, amount, deadline);
-      return bridgeFactory.lockTokenWithPermit(tokenAddress, amount, targetChainId, nonce, deadline, v, r, s);
+      return bridgeFactory.lockTokenWithPermit(tokenAddress, amount, targetChainId, deadline, v, r, s);
     } else {
       const approveTx = await tokenContract.approve(currentNetwork.bridgeFactoryAddress, amount);
       await approveTx.wait();
@@ -69,7 +67,7 @@ export const lockToken = async (
       const allowance = await tokenContract.allowance(wallet.address, currentNetwork.bridgeFactoryAddress);
       if (allowance < amount) throw new BridgeClientError(ERROR_MESSAGES.APPROVAL_NOT_CONFIRMED_ON_CHAIN);
 
-      return bridgeFactory.lockToken(tokenAddress, amount, targetChainId, nonce);
+      return bridgeFactory.lockToken(tokenAddress, amount, targetChainId);
     }
   } catch (error) {
     throw new BridgeClientError(error);
@@ -84,12 +82,11 @@ export const lockNative = async (
 
   const { wallet, currentNetwork } = BridgeUtils.getProviderAndWallet();
   const bridgeFactory = new Contract(currentNetwork.bridgeFactoryAddress, bridgeFactoryAbi.abi, wallet);
-  const nonce = Date.now();
 
   try {
-    console.log(`Locking native ETH: amount=${amount.toString()}, targetChainId=${targetChainId}, nonce=${nonce}`);
+    console.log(`Locking native ETH: amount=${amount.toString()}, targetChainId=${targetChainId}`);
 
-    const tx = await bridgeFactory.lockNative(targetChainId, nonce, { value: amount });
+    const tx = await bridgeFactory.lockNative(targetChainId, { value: amount });
 
     console.log(`Lock transaction sent. Hash: ${tx.hash}`);
 
@@ -105,6 +102,8 @@ export const claimToken = async (
   amount: number,
   nonce: number,
   chainId: number,
+  claimChainId: number,
+  deadline: number,
   signature: string,
   becomeWrapped: boolean
 ): Promise<ContractTransactionResponse> => {
@@ -120,7 +119,7 @@ export const claimToken = async (
 
     const targetChainId = becomeWrapped
       ? cliConfigManager.getCliConfig().targetChainId!
-      : chainId;
+      : claimChainId;
 
     const targetNetwork = getNetworkConfigByChainId(targetChainId);
     const provider = new ethers.WebSocketProvider(targetNetwork.wsUrl);
@@ -131,9 +130,9 @@ export const claimToken = async (
     let tx: ContractTransactionResponse;
 
     if (becomeWrapped) {
-      tx = await bridgeFactory.claimWrappedWithSignature(userAddress, tokenAddress, amount, nonce, chainId, signature);
+      tx = await bridgeFactory.claimWrappedWithSignature(userAddress, tokenAddress, amount, nonce, chainId, claimChainId, deadline, signature);
     } else {
-      tx = await bridgeFactory.claimOriginalWithSignature(userAddress, tokenAddress, amount, nonce, chainId, signature);
+      tx = await bridgeFactory.claimOriginalWithSignature(userAddress, tokenAddress, amount, nonce, chainId, claimChainId, deadline, signature);
     }
 
     console.log(`Claim transaction sent. Hash: ${tx.hash}`);
@@ -156,10 +155,7 @@ export async function burnToken(
     const targetNetwork = getNetworkConfigByChainId(targetChainId);
     const bridgeFactory = new Contract(targetNetwork.bridgeFactoryAddress, bridgeFactoryAbi.abi, wallet);
 
-    const nonce = Date.now();
-
     console.log(`
-      Nonce: ${nonce}
       Wrapped Token Address: ${wrappedTokenAddress}
       Original Token Address: ${originalTokenAddress}
       Amount: ${amount.toString()}
@@ -173,7 +169,6 @@ export async function burnToken(
       originalTokenAddress,
       amount.toString(),
       originalChainId.toString(),
-      nonce.toString()
     );
 
     console.log(`Transaction sent! Hash: ${tx.hash}`);

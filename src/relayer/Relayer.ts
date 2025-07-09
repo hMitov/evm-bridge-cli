@@ -7,6 +7,7 @@ import * as path from 'path';
 import { claimsManager } from './ClaimsManager';
 import { getNetworkConfigByChainId } from '../config/networks';
 import { SignedClaim } from '../types';
+import { cliConfigManager } from '../config/cliConfig';
 
 export class Relayer {
   private provider!: WebSocketProvider;
@@ -151,15 +152,17 @@ export class Relayer {
         throw new Error(`Unsupported event type for lock claim: ${event.eventName}`);
       }
 
-      if (!user || !token || !amount || !targetChainId || !nonce) {
+      if (!user || !token || !amount || !targetChainId) {
         this.log('[Relayer] ERROR: Missing event argument: ' + JSON.stringify(safeArgs));
         throw new Error('Missing event argument in event');
       }
 
       targetBridgeFactoryAddress = getNetworkConfigByChainId(targetChainId).bridgeFactoryAddress;
+      const deadline = Math.floor(Date.now() / 1000) + 2 * 24 * 60 * 60;
+
       packed = ethers.solidityPacked(
-        ['address', 'address', 'uint256', 'uint256', 'uint256', 'address'],
-        [user, token, amount, nonce, this.networkConfig.chainId, targetBridgeFactoryAddress]
+        ['address', 'address', 'uint256', 'uint256', 'uint256', 'uint256', 'address', 'uint256'],
+        [user, token, amount, nonce, this.networkConfig.chainId, Number(targetChainId), targetBridgeFactoryAddress, deadline]
       );
 
       const hash = ethers.keccak256(packed!);
@@ -173,10 +176,11 @@ export class Relayer {
         amount: amount.toString(),
         nonce: nonce.toString(),
         sourceChainId: this.networkConfig.chainId.toString(),
+        claimChainId: targetChainId.toString(),
         signature,
+        deadline: deadline.toString(),
         claimed: false
       };
-
     } else if (claimType === ClaimType.BURN) {
       if (event.eventName !== EventName.TOKEN_BURNED) {
         throw new Error(`Unsupported event type: ${event.eventName}`);
@@ -184,18 +188,20 @@ export class Relayer {
       
       let [user, token, originalToken, amount, originalChainId, nonce] = event.args;
 
-      if (!user || !token || !originalToken || !amount || !originalChainId || !nonce) {
+      if (!user || !token || !originalToken || !amount || !originalChainId) {
         this.log('[Relayer] ERROR: Missing event argument: ' + JSON.stringify(safeArgs));
         throw new Error('Missing event argument in event');
       }
 
       targetBridgeFactoryAddress = getNetworkConfigByChainId(originalChainId).bridgeFactoryAddress;
-
+      const deadline = Math.floor(Date.now() / 1000) + 2 * 24 * 60 * 60;
       token = originalToken;
 
+      const cliConfig = cliConfigManager.getCliConfig();
+
       packed = ethers.solidityPacked(
-        ['address', 'address', 'uint256', 'uint256', 'uint256', 'address'],
-        [user, token, amount, nonce, originalChainId, targetBridgeFactoryAddress]
+        ['address', 'address', 'uint256', 'uint256', 'uint256', 'uint256', 'address', 'uint256'],
+        [user, token, amount, nonce, cliConfig.targetChainId, originalChainId, targetBridgeFactoryAddress, deadline]
       );
 
       const hash = ethers.keccak256(packed!);
@@ -209,7 +215,9 @@ export class Relayer {
         amount: amount.toString(),
         nonce: nonce.toString(),
         sourceChainId: this.networkConfig.chainId.toString(),
+        claimChainId: originalChainId.toString(),
         signature,
+        deadline: deadline.toString(),
         claimed: false
       };
     }

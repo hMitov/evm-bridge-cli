@@ -36,8 +36,9 @@ export class ClaimOriginCommand extends BaseCommand {
         return;
       }
 
-      const { user, amount, nonce, signature } = claim;
-      const targetChainId = config.currentNetwork.chainId;
+      const { user, token, amount, nonce, sourceChainId, claimChainId, signature, deadline } = claim;
+      const targetChainId = claimChainId;
+      const burnChainId = sourceChainId;
 
       console.log(`Claiming ${amount} tokens to chain ID ${targetChainId}...`);
       const tx = await claimToken(
@@ -45,7 +46,9 @@ export class ClaimOriginCommand extends BaseCommand {
         originalToken!,
         Number(amount),
         Number(nonce),
+        Number(burnChainId),
         Number(targetChainId),
+        Number(deadline),
         signature,
         false
       );
@@ -69,7 +72,7 @@ export class ClaimOriginCommand extends BaseCommand {
         chainId: targetChainId
       });
 
-      await claimsManager.markClaimAsClaimed(userAddress, nonce);
+      await claimsManager.markClaimAsClaimed(userAddress, nonce, claimChainId);
 
     } catch (error) {
       if (error instanceof ClaimOriginError) {

@@ -20,7 +20,7 @@ export class ClaimWrappedCommand extends BaseCommand {
         return;
       }
 
-      const { user, token, amount, sourceChainId, nonce, signature } = claim;
+      const { user, token, amount, nonce, sourceChainId, claimChainId, signature, deadline } = claim;
 
       console.log(`Claiming tokens for amount: ${amount}, nonce: ${nonce}, sourceChainId: ${sourceChainId}`);
 
@@ -30,6 +30,8 @@ export class ClaimWrappedCommand extends BaseCommand {
         Number(amount),
         Number(nonce),
         Number(sourceChainId),
+        Number(claimChainId),
+        Number(deadline),
         signature,
         true
       );
@@ -53,7 +55,7 @@ export class ClaimWrappedCommand extends BaseCommand {
         chainId: sourceChainId.toString()
       });
 
-      await claimsManager.markClaimAsClaimed(userAddress, nonce);
+      await claimsManager.markClaimAsClaimed(userAddress, nonce, claimChainId);
     } catch (error) {
       if (error instanceof ClaimWrappedError) {
         console.error('Claim wrapped error:', error.message);

@@ -41,9 +41,11 @@ export interface SignedClaim {
   user: string;
   token: string;
   amount: string;
-  sourceChainId: string;
   nonce: string;
+  sourceChainId: string;
+  claimChainId: string;
   signature: string;
+  deadline: string;
   claimed?: boolean;
   claimType?: 'lock' | 'burn';
 }

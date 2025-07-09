@@ -153,7 +153,7 @@ export class ClaimsManager {
     return filtered.length > 0 ? filtered[0] : null;
   }
 
-  async markClaimAsClaimed(user: string, nonce: string): Promise<void> {
+  async markClaimAsClaimed(user: string, nonce: string, claimChainId: string): Promise<void> {
     await this.loadFromFile();
 
     let normalizedUser: string;
@@ -169,7 +169,7 @@ export class ClaimsManager {
       console.warn(`No claims found for user ${normalizedUser}.`);
       return;
     }
-    const claim = userClaims.find(c => c.nonce === nonce);
+    const claim = userClaims.find(c => c.nonce === nonce && c.claimChainId === claimChainId);
     if (!claim) {
       console.warn(`Claim nonce ${nonce} not found for user ${normalizedUser}.`);
       return;
